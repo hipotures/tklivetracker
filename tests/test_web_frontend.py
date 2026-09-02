@@ -144,6 +144,70 @@ def test_users_interval_column_follows_legacy_scheduler_flag() -> None:
     assert "allowedUserSorts.push('interval', 'next_check')" in preferences_source
 
 
+def test_screenshot_locators_cover_dynamic_user_actions_without_user_data() -> None:
+    project_root = Path(__file__).resolve().parent.parent
+    users_source = (
+        project_root / "web_monitor" / "static" / "js" / "users.js"
+    ).read_text(encoding="utf-8")
+
+    for screenshot_id in [
+        "user-check-live",
+        "user-edit",
+        "user-delete",
+        "users-page-number",
+        "users-retry-load",
+    ]:
+        assert f'data-screenshot-id="{screenshot_id}"' in users_source or (
+            f"screenshotId = '{screenshot_id}'" in users_source
+        )
+
+    assert "data-screenshot-id=\"${" not in users_source
+    assert "data-screenshot-id=\"user-edit-${" not in users_source
+    assert '<button id="user-edit"' not in users_source
+    assert "this.usersData.map((user, index)" in users_source
+
+
+def test_screenshot_locators_preserve_existing_semantic_ids_for_state_controls() -> None:
+    project_root = Path(__file__).resolve().parent.parent
+    layout = (project_root / "web_monitor" / "templates" / "layout.html").read_text(
+        encoding="utf-8"
+    )
+    users_template = (
+        project_root / "web_monitor" / "templates" / "pages" / "users.html"
+    ).read_text(encoding="utf-8")
+    analytics_template = (
+        project_root / "web_monitor" / "templates" / "pages" / "analytics.html"
+    ).read_text(encoding="utf-8")
+
+    for screenshot_id in [
+        "nav-dashboard",
+        "nav-users",
+        "nav-live",
+        "nav-favorites",
+        "nav-stats",
+        "nav-analytics",
+        "nav-admin",
+    ]:
+        assert f'data-screenshot-id="{screenshot_id}"' in layout
+
+    for control_id in [
+        "users-search",
+        "live-filter",
+        "active-filter",
+        "clear-filters",
+        "prev-page",
+        "next-page",
+        "analytics-view",
+        "analytics-prev",
+        "analytics-next",
+        "analytics-refresh",
+        "live-sessions-tab-button",
+        "new-users-tab-button",
+    ]:
+        source = analytics_template if control_id.startswith("analytics") or control_id.endswith("tab-button") else users_template
+        assert f'id="{control_id}"' in source
+
+
 def test_dashboard_live_cards_are_compact_without_reducing_live_now_details() -> None:
     project_root = Path(__file__).resolve().parent.parent
     source = (

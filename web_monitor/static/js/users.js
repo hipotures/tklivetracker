@@ -305,6 +305,7 @@ TikTokRecorderApp.prototype.renderUsersError = function(message) {
     const retry = document.createElement('button');
     retry.type = 'button';
     retry.className = 'btn btn-secondary btn-sm';
+    retry.dataset.screenshotId = 'users-retry-load';
     retry.textContent = 'Try again';
     retry.addEventListener('click', () => this.loadUsers());
 
@@ -353,6 +354,7 @@ TikTokRecorderApp.prototype.renderUsersTable = function() {
             <td data-label="Actions">
                 <div class="user-actions">
                     <button class="btn btn-sm btn-primary"
+                            data-screenshot-id="user-check-live"
                             type="button"
                             data-user-action="check"
                             data-user-index="${index}"
@@ -360,12 +362,14 @@ TikTokRecorderApp.prototype.renderUsersTable = function() {
                         Check Live
                     </button>
                     <button class="btn btn-sm btn-secondary"
+                            data-screenshot-id="user-edit"
                             type="button"
                             data-user-action="edit"
                             data-user-index="${index}">
                         Edit
                     </button>
                     <button class="btn btn-sm btn-danger"
+                            data-screenshot-id="user-delete"
                             type="button"
                             data-user-action="delete"
                             data-user-index="${index}"
@@ -486,6 +490,7 @@ TikTokRecorderApp.prototype.updatePagination = function() {
         }
         return `
             <button class="page-number ${page === this.pagination.page ? 'active' : ''}"
+                    data-screenshot-id="users-page-number"
                     type="button"
                     data-page-number="${page}"
                     aria-label="Go to page ${page}"

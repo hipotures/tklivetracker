@@ -223,7 +223,7 @@ TikTokRecorderApp.prototype.renderDelayTable = function(users) {
 
         row.innerHTML = `
             <td>
-                <a href="#" class="username-link" data-username="${this.escapeHtml(user.username)}">
+                <a href="#" class="username-link" data-screenshot-id="stats-open-user" data-username="${this.escapeHtml(user.username)}">
                     ${this.escapeHtml(user.username)}
                 </a>
             </td>
@@ -265,6 +265,7 @@ TikTokRecorderApp.prototype.renderIntervalDistribution = function(intervals) {
     sortedIntervals.forEach(item => {
         const div = document.createElement('div');
         div.className = 'interval-item clickable';
+        div.dataset.screenshotId = 'stats-interval';
         div.style.cursor = 'pointer';
         div.title = `Click to view ${item.count} users with ${this.formatInterval(item.interval)} interval`;
 
@@ -453,7 +454,7 @@ TikTokRecorderApp.prototype.renderIntervalUsersTable = function(data) {
 
         row.innerHTML = `
             <td>
-                <a href="#" class="username-link" data-username="${this.escapeHtml(user.username)}">
+                <a href="#" class="username-link" data-screenshot-id="stats-open-user" data-username="${this.escapeHtml(user.username)}">
                     ${this.escapeHtml(user.username)}
                 </a>
             </td>
@@ -567,7 +568,7 @@ TikTokRecorderApp.prototype.renderNewUsersTable = function(users) {
 
         row.innerHTML = `
             <td>
-                <a href="#" class="username-link" data-username="${this.escapeHtml(user.username)}">
+                <a href="#" class="username-link" data-screenshot-id="stats-open-user" data-username="${this.escapeHtml(user.username)}">
                     ${this.escapeHtml(user.username)}
                 </a>
             </td>
@@ -689,7 +690,7 @@ TikTokRecorderApp.prototype.renderRecentLiveUsersTable = function(users) {
 
         row.innerHTML = `
             <td>
-                <button class="username-link username-link-button" type="button"
+                <button class="username-link username-link-button" data-screenshot-id="stats-open-user" type="button"
                         title="View this user on the Users page">
                     ${this.escapeHtml(user.username)}
                 </button>
