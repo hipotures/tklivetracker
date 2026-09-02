@@ -573,7 +573,8 @@ TikTokRecorderApp.prototype.fetchUserForEdit = async function(username) {
 
         // Populate modal with fresh data
         document.getElementById('edit-username').value = user.username;
-        document.getElementById('edit-check-interval').value = user.check_interval;
+        const checkIntervalInput = document.getElementById('edit-check-interval');
+        if (checkIntervalInput) checkIntervalInput.value = user.check_interval;
         document.getElementById('edit-is-active').checked = user.is_active;
         document.getElementById('edit-is-favorite').checked = user.is_favorite;
         document.getElementById('edit-notifications-enabled').checked = user.notifications_enabled;
@@ -592,7 +593,8 @@ TikTokRecorderApp.prototype.saveUserChanges = async function() {
     }
 
     const username = document.getElementById('edit-username').value;
-    const checkInterval = parseInt(document.getElementById('edit-check-interval').value);
+    const checkIntervalInput = document.getElementById('edit-check-interval');
+    const checkInterval = checkIntervalInput ? parseInt(checkIntervalInput.value) : null;
     const isActive = document.getElementById('edit-is-active').checked;
     const isFavorite = document.getElementById('edit-is-favorite').checked;
     const notificationsEnabled = document.getElementById('edit-notifications-enabled').checked;
@@ -601,10 +603,17 @@ TikTokRecorderApp.prototype.saveUserChanges = async function() {
     if (saveButton?.dataset.pending === 'true') return;
 
     // Validate check interval
-    if (isNaN(checkInterval) || checkInterval < 1 || checkInterval > 3600) {
+    if (checkIntervalInput && (isNaN(checkInterval) || checkInterval < 1 || checkInterval > 3600)) {
         this.showToast('error', 'Invalid Input', 'Check interval must be between 1 and 3600 seconds');
         return;
     }
+
+    const updates = {
+        is_active: isActive,
+        is_favorite: isFavorite,
+        notifications_enabled: notificationsEnabled
+    };
+    if (checkIntervalInput) updates.check_interval = checkInterval;
 
     try {
         if (saveButton) {
@@ -616,12 +625,7 @@ TikTokRecorderApp.prototype.saveUserChanges = async function() {
 
         await this.apiRequest(`/api/users/${encodeURIComponent(username)}`, {
             method: 'PUT',
-            body: JSON.stringify({
-                check_interval: checkInterval,
-                is_active: isActive,
-                is_favorite: isFavorite,
-                notifications_enabled: notificationsEnabled
-            })
+            body: JSON.stringify(updates)
         });
 
         this.hideModal('edit-user-modal');

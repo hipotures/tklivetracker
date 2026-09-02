@@ -137,6 +137,10 @@ def test_users_interval_column_follows_legacy_scheduler_flag() -> None:
         'this.legacySchedulerStatsEnabled ? `<td data-label="Interval">'
         in users_source
     )
+    assert (
+        "if (checkIntervalInput) updates.check_interval = checkInterval;"
+        in users_source
+    )
     assert "allowedUserSorts.push('interval', 'next_check')" in preferences_source
 
 
