@@ -146,6 +146,59 @@ uv sync --frozen --extra telegram-upload
 Supervisor Telegram alerts do not require this extra. See
 [Configuration](docs/configuration.md#telegram).
 
+<!-- BEGIN GENERATED PUBLIC SCREENSHOTS -->
+## Screenshots
+
+The screenshots below are captured from a local TkLiveTracker instance with the public screenshot harness. Usernames are pseudonymized before each PNG is written.
+
+### Dashboard
+
+| Dashboard Dark | Dashboard Light |
+| --- | --- |
+| [![Dashboard Dark](docs/screenshots/01-dashboard-dark.png)](docs/screenshots/01-dashboard-dark.png) | [![Dashboard Light](docs/screenshots/02-dashboard-light.png)](docs/screenshots/02-dashboard-light.png) |
+
+### Users
+
+| Users Dark | Users Light |
+| --- | --- |
+| [![Users Dark](docs/screenshots/03-users-dark.png)](docs/screenshots/03-users-dark.png) | [![Users Light](docs/screenshots/04-users-light.png)](docs/screenshots/04-users-light.png) |
+
+**Users Edit Modal**
+
+[![Users Edit Modal](docs/screenshots/10-users-edit-modal-dark.png)](docs/screenshots/10-users-edit-modal-dark.png)
+
+### Live
+
+**Live Dark**
+
+[![Live Dark](docs/screenshots/05-live-dark.png)](docs/screenshots/05-live-dark.png)
+
+### Favorites
+
+**Favorites Dark**
+
+[![Favorites Dark](docs/screenshots/06-favorites-dark.png)](docs/screenshots/06-favorites-dark.png)
+
+### Stats
+
+**Stats Dark**
+
+[![Stats Dark](docs/screenshots/07-stats-dark.png)](docs/screenshots/07-stats-dark.png)
+
+### Analytics
+
+| Analytics Dark | Analytics Dark New Users |
+| --- | --- |
+| [![Analytics Dark](docs/screenshots/08-analytics-dark.png)](docs/screenshots/08-analytics-dark.png) | [![Analytics Dark New Users](docs/screenshots/11-analytics-dark-new-users-dark.png)](docs/screenshots/11-analytics-dark-new-users-dark.png) |
+
+### Admin
+
+**Admin Dark**
+
+[![Admin Dark](docs/screenshots/09-admin-dark.png)](docs/screenshots/09-admin-dark.png)
+
+<!-- END GENERATED PUBLIC SCREENSHOTS -->
+
 ## Testing
 
 Install the development group and run the deterministic offline checks:
