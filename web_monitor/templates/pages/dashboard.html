@@ -1,0 +1,77 @@
+<!-- Dashboard Page -->
+<div id="dashboard-page" class="page active">
+    <div class="page-header">
+        <div>
+            <h2>Dashboard</h2>
+            <p class="page-subtitle">System overview and live streams</p>
+        </div>
+    </div>
+
+    {% if feature_flags.legacySchedulerStatsEnabled %}
+    <!-- Quick Add User -->
+    <div class="quick-add-section">
+        <h3>Quick Add User</h3>
+        <form id="quick-add-form" class="quick-add-form" novalidate>
+            <div class="search-input-wrapper">
+                <label class="visually-hidden" for="quick-add-username">TikTok username</label>
+                <input type="text"
+                       id="quick-add-username"
+                       name="username"
+                       placeholder="Enter TikTok username..."
+                       class="input-field"
+                       minlength="2"
+                       maxlength="25"
+                       autocomplete="off"
+                       autocapitalize="none"
+                       spellcheck="false"
+                       aria-describedby="quick-add-help quick-add-message"
+                       required
+                       {% if read_only %}disabled title="Read-only mode: Cannot add users"{% endif %}>
+                <button id="clear-quick-add" class="clear-search-btn" aria-label="Clear username" type="button">
+                    <svg class="ui-icon" aria-hidden="true"><use href="{{ url_for('static', filename='vendor/lucide/icons.svg') }}#x"></use></svg>
+                </button>
+            </div>
+            <button id="quick-add-btn"
+                    class="btn btn-primary"
+                    type="submit"
+                    {% if read_only %}disabled title="Read-only mode: Cannot add users"{% endif %}>
+                Add User
+            </button>
+        </form>
+        <small id="quick-add-help" class="form-help">2–24 letters, digits, underscores, or periods; an initial @ is optional and the username cannot end with a period.</small>
+        <div id="quick-add-message" class="message hidden" role="status" aria-live="polite"></div>
+    </div>
+    {% endif %}
+
+    <!-- Statistics Cards -->
+    <div class="stats-grid">
+        <div class="stat-card">
+            <div class="stat-value" id="total-users">--</div>
+            <div class="stat-label">Total Users</div>
+        </div>
+        <div class="stat-card live">
+            <div class="stat-value" id="live-users-count">--</div>
+            <div class="stat-label">Live Now</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value" id="active-users">--</div>
+            <div class="stat-label">Active Users</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value" id="total-lives">--</div>
+            <div class="stat-label">Total Recorded</div>
+        </div>
+        <div class="stat-card warning">
+            <div class="stat-value" id="long-streams">--</div>
+            <div class="stat-label">Long Streams (>5h)</div>
+        </div>
+    </div>
+
+    <!-- Live Users -->
+    <div class="live-users-section">
+        <h3>Currently Live <span id="live-badge" class="badge">0</span></h3>
+        <div id="live-users-list" class="live-users-grid" aria-live="polite" aria-busy="false">
+            <!-- Live users will be populated here -->
+        </div>
+    </div>
+</div>

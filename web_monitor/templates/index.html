@@ -1,0 +1,15 @@
+{% extends "layout.html" %}
+
+{% block title %}TkLiveTracker - Dashboard{% endblock %}
+
+{% block content %}
+    <!-- Include all page components -->
+    {% include 'pages/dashboard.html' %}
+    {% include 'pages/users.html' %}
+    {% include 'pages/live.html' %}
+    {% include 'pages/favorites.html' %}
+    {% include 'pages/stats.html' %}
+    {% include 'pages/analytics.html' %}
+    {% include 'pages/admin.html' %}
+
+{% endblock %}

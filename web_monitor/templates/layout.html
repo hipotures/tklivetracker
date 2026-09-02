@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}TkLiveTracker{% endblock %}</title>
+
+    <!-- Prevent FOUC (Flash of Unstyled Content) for dark mode -->
+    <script>
+        (function() {
+            try {
+                var theme = localStorage.getItem('theme');
+                if (theme !== 'light') {
+                    document.documentElement.setAttribute('data-theme', 'dark');
+                }
+            } catch (error) {
+                // Storage can be unavailable in hardened/private browser contexts.
+            }
+        })();
+    </script>
+
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link rel="icon" href="{{ url_for('static', filename='favicon.svg') }}" type="image/svg+xml">
+    <link rel="manifest" href="/manifest.json">
+    <script>
+        window.TTRACKER_CONFIG = {{ {'featureFlags': feature_flags|default({})}|tojson(indent=2) }};
+    </script>
+    {% block head %}{% endblock %}
+</head>
+<body>
+    <a class="skip-link" href="#main-content">Skip to main content</a>
+    <div class="app-container">
+        <!-- Header -->
+        <header class="header">
+            <div class="header-content">
+                <h1 class="app-title">
+                    <span class="logo" aria-hidden="true">TLT</span>
+                    <span class="app-title-text">TkLiveTracker</span>
+                </h1>
+                <div class="header-info">
+                    <div class="last-updated-container">
+                        <div class="last-updated-row">
+                            <div class="last-updated-text-container">
+                                <span id="last-updated" class="last-updated" role="status" aria-live="polite">Last updated: --</span>
+                                <div class="refresh-progress-bar">
+                                    <div id="refresh-progress" class="refresh-progress"></div>
+                                </div>
+                            </div>
+                            <button id="main-refresh-icon" class="header-refresh-icon" title="Refresh all data" aria-label="Refresh all data" type="button">
+                                <svg class="ui-icon" aria-hidden="true"><use href="{{ url_for('static', filename='vendor/lucide/icons.svg') }}#refresh-cw"></use></svg>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="status-indicators">
+                        <div class="status-indicator" id="sse-status" title="Live updates: connecting" role="status">
+                            <span class="dot"></span>
+                            <span class="visually-hidden">Live updates: connecting</span>
+                        </div>
+                        <div class="status-indicator" id="supervisor-status" title="Supervisor: checking" role="status">
+                            <span class="dot"></span>
+                            <span class="visually-hidden">Supervisor: checking</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <!-- Read-Only Mode Banner -->
+        {% if read_only %}
+        <div class="read-only-banner">
+            <div class="read-only-content">
+                <span class="read-only-icon" aria-hidden="true"><svg class="ui-icon"><use href="{{ url_for('static', filename='vendor/lucide/icons.svg') }}#lock-keyhole"></use></svg></span>
+                <span class="read-only-text">READ-ONLY MODE</span>
+                <span class="read-only-description">Write operations are disabled</span>
+            </div>
+        </div>
+        {% endif %}
+
+        <div id="connection-banner" class="connection-banner hidden" role="alert">
+            <span id="connection-message">The server could not be reached.</span>
+            <button id="connection-retry" class="btn btn-secondary btn-sm" type="button">Try again</button>
+        </div>
+
+        <!-- Main Content -->
+        <main id="main-content" class="main-content" tabindex="-1">
+            <!-- Sidebar Navigation -->
+            <nav class="sidebar" aria-label="Primary navigation">
+                <div class="nav-section">
+                    <button class="nav-item active" data-page="dashboard" type="button" aria-controls="dashboard-page" aria-current="page">
+                        <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 19V9m6 10V5m6 14v-7m4 7H2"/></svg></span>
+                        <span class="nav-text">Dashboard</span>
+                    </button>
+                    <button class="nav-item" data-page="users" type="button" aria-controls="users-page">
+                        <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2m7-10a4 4 0 1 0 0-8 4 4 0 0 0 0 8Zm13 10v-2a4 4 0 0 0-3-3.87m-2-11.96a4 4 0 0 1 0 7.75"/></svg></span>
+                        <span class="nav-text">Users</span>
+                    </button>
+                    <button class="nav-item" data-page="live" type="button" aria-controls="live-page">
+                        <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M8.5 16.5a6 6 0 0 1 0-9m7 0a6 6 0 0 1 0 9M5.5 19.5a10 10 0 0 1 0-15m13 0a10 10 0 0 1 0 15"/><circle cx="12" cy="12" r="2"/></svg></span>
+                        <span class="nav-text">Live Now</span>
+                    </button>
+                    <button class="nav-item" data-page="favorites" type="button" aria-controls="favorites-page">
+                        <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="m12 3 2.75 5.57 6.15.9-4.45 4.33 1.05 6.12L12 17.03l-5.5 2.89 1.05-6.12L3.1 9.47l6.15-.9L12 3Z"/></svg></span>
+                        <span class="nav-text">Favorites</span>
+                    </button>
+                    <button class="nav-item" data-page="stats" type="button" aria-controls="stats-page">
+                        <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="m3 17 6-6 4 4 8-9m-5 0h5v5"/></svg></span>
+                        <span class="nav-text">Stats</span>
+                    </button>
+                    <button class="nav-item" data-page="analytics" type="button" aria-controls="analytics-page">
+                        <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 19V9h4v10H4Zm6 0V4h4v15h-4Zm6 0v-6h4v6h-4Z"/></svg></span>
+                        <span class="nav-text">Analytics</span>
+                    </button>
+                    <button class="nav-item" data-page="admin" type="button" aria-controls="admin-page">
+                        <span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06-2.83 2.83-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21h-4v-.17a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06-2.83-2.83.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-1.51-1H3v-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06L7.04 4.3l.06.06A1.65 1.65 0 0 0 8.92 4a1.65 1.65 0 0 0 1-1.51V2h4v.49A1.65 1.65 0 0 0 15 4a1.65 1.65 0 0 0 1.82-.33l.06-.06 2.83 2.83-.06.06A1.65 1.65 0 0 0 19.4 9c.14.61.68 1.04 1.31 1.04H21v4h-.29c-.63 0-1.17.43-1.31 1Z"/></svg></span>
+                        <span class="nav-text">Admin</span>
+                    </button>
+                </div>
+            </nav>
+
+            <!-- Content Area -->
+            <div class="content-area">
+                {% block content %}{% endblock %}
+            </div>
+        </main>
+    </div>
+
+    <!-- Include Modals Component -->
+    {% include 'components/modals.html' %}
+
+    <!-- Include JavaScript -->
+    {% include 'components/scripts.html' %}
+</body>
+</html>

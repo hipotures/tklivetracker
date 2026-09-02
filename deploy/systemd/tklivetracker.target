@@ -1,0 +1,6 @@
+[Unit]
+Description=TkLiveTracker services
+Wants=tklivetracker-monitor.service tklivetracker-supervisor.service tklivetracker-web.service
+
+[Install]
+WantedBy=default.target

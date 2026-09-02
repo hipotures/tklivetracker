@@ -1,0 +1,208 @@
+                <!-- Admin Page -->
+                <div id="admin-page" class="page">
+                    <div class="page-header">
+                        <div>
+                            <h2>System Administration</h2>
+                            <p class="page-subtitle">Supervisor status and system monitoring</p>
+                        </div>
+                    </div>
+
+                    <!-- Admin Controls -->
+                    <div class="admin-controls">
+                        <h3>Application Settings</h3>
+                        <div class="controls-grid">
+                            <div class="control-group">
+                                <label>Theme</label>
+                                <button id="theme-toggle" class="btn btn-secondary" title="Toggle dark mode" type="button">
+                                    <span class="theme-icon-container">
+                                        <svg class="ui-icon theme-icon-light" aria-hidden="true"><use href="{{ url_for('static', filename='vendor/lucide/icons.svg') }}#sun"></use></svg>
+                                        <svg class="ui-icon theme-icon-dark" aria-hidden="true"><use href="{{ url_for('static', filename='vendor/lucide/icons.svg') }}#moon"></use></svg>
+                                    </span>
+                                    <span class="control-text">Toggle Dark Mode</span>
+                                </button>
+                            </div>
+                            <div class="control-group">
+                                <label>Preferences</label>
+                                <button id="reset-preferences" class="btn btn-secondary" title="Reset all preferences to defaults" type="button">
+                                    <svg class="ui-icon" aria-hidden="true"><use href="{{ url_for('static', filename='vendor/lucide/icons.svg') }}#settings"></use></svg>
+                                    <span class="control-text">Reset Preferences</span>
+                                </button>
+                            </div>
+                            <div class="control-group">
+                                <label>Notifications</label>
+                                <button id="test-browser-notification" class="btn btn-secondary" title="Test browser notifications" type="button">
+                                    <svg class="ui-icon" aria-hidden="true"><use href="{{ url_for('static', filename='vendor/lucide/icons.svg') }}#bell"></use></svg>
+                                    <span class="control-text">Test Browser Notification</span>
+                                </button>
+                            </div>
+                            <div class="control-group">
+                                <label>Live Notifications</label>
+                                <div class="checkbox-container control-toggle">
+                                    <input type="checkbox" id="notify-all-live" class="checkbox">
+                                    <label for="notify-all-live" class="checkbox-label">
+                                        <svg class="ui-icon" aria-hidden="true"><use href="{{ url_for('static', filename='vendor/lucide/icons.svg') }}#megaphone"></use></svg>
+                                        <span class="control-text">Notify for all live streams</span>
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Supervisor Status Overview -->
+                    <div class="admin-overview">
+                        <h3>Supervisor Status</h3>
+                        <div class="supervisor-status-header">
+                            <div class="supervisor-status-indicator" id="admin-supervisor-indicator">
+                                <span class="dot"></span>
+                                <span id="admin-supervisor-status-text">Checking...</span>
+                            </div>
+                            <button id="admin-refresh" class="btn btn-secondary btn-sm">Refresh</button>
+                        </div>
+                        <div class="supervisor-status-card">
+                            <div class="supervisor-details" id="supervisor-details">
+                                <div class="info-item">
+                                    <label>PID:</label>
+                                    <span id="supervisor-pid">--</span>
+                                </div>
+                                <div class="info-item">
+                                    <label>Started:</label>
+                                    <span id="supervisor-started">--</span>
+                                </div>
+                                <div class="info-item">
+                                    <label>Last Heartbeat:</label>
+                                    <span id="supervisor-heartbeat">--</span>
+                                </div>
+                                <div class="info-item">
+                                    <label>Version:</label>
+                                    <span id="supervisor-version">--</span>
+                                </div>
+                                <div class="info-item">
+                                    <label>Config Hash:</label>
+                                    <span id="supervisor-config-hash">--</span>
+                                </div>
+                                <div class="info-item">
+                                    <label>Uptime:</label>
+                                    <span id="supervisor-uptime">--</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Supervisor Statistics -->
+                    <div class="admin-stats">
+                        <h3>Supervisor Statistics</h3>
+                        <p class="admin-section-note">Counters since this supervisor instance started.</p>
+                        <div class="stats-grid">
+                            <div class="stat-card">
+                                <div class="stat-value" id="admin-live-detections">--</div>
+                                <div class="stat-label">Live Detections</div>
+                            </div>
+                            <div class="stat-card">
+                                <div class="stat-value" id="admin-recording-starts">--</div>
+                                <div class="stat-label">Recording Starts</div>
+                            </div>
+                            <div class="stat-card">
+                                <div class="stat-value" id="admin-recording-stops">--</div>
+                                <div class="stat-label">Recording Stops</div>
+                            </div>
+                            <div class="stat-card">
+                                <div class="stat-value" id="admin-health-checks">--</div>
+                                <div class="stat-label">Recorder Checks</div>
+                            </div>
+                            <div class="stat-card">
+                                <div class="stat-value" id="admin-restarts">--</div>
+                                <div class="stat-label">Process Restarts</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- System Information -->
+                    <div class="admin-system-info">
+                        <h3>System Information</h3>
+                        <div class="system-info-grid">
+                            <div class="info-card">
+                                <h4>Configuration</h4>
+                                <div id="config-info">
+                                    <div class="info-item">
+                                        <label>Recordings Path:</label>
+                                        <span id="recordings-path">--</span>
+                                    </div>
+                                    <div class="info-item">
+                                        <label>Log Path:</label>
+                                        <span id="log-path">--</span>
+                                    </div>
+                                    <div class="info-item">
+                                        <label>Check New Users:</label>
+                                        <span id="check-new-users">--</span>
+                                    </div>
+                                    <div class="info-item">
+                                        <label>Default Check Interval:</label>
+                                        <span id="default-check-interval">--</span>
+                                    </div>
+                                    <div class="info-item">
+                                        <label>Max Check Interval:</label>
+                                        <span id="max-check-interval">--</span>
+                                    </div>
+                                    <div class="info-item">
+                                        <label>After Live Check:</label>
+                                        <span id="after-live-check-interval">--</span>
+                                    </div>
+                                    <div class="info-item">
+                                        <label>Heartbeat Interval:</label>
+                                        <span id="supervisor-heartbeat-interval">--</span>
+                                    </div>
+                                    <div class="info-item">
+                                        <label>Health Check Interval:</label>
+                                        <span id="health-check-interval">--</span>
+                                    </div>
+                                    <div class="info-item">
+                                        <label>Max Live Processes:</label>
+                                        <span id="max-live-processes">--</span>
+                                    </div>
+                                    <div class="info-item">
+                                        <label>Detached Mode:</label>
+                                        <span id="detached-process-mode">--</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="info-card">
+                                <h4>Database</h4>
+                                <div id="database-info">
+                                    <div class="info-item">
+                                        <label>Connection:</label>
+                                        <span id="db-connection-status">--</span>
+                                    </div>
+                                    <div class="info-item">
+                                        <label>Path:</label>
+                                        <span id="db-path">--</span>
+                                    </div>
+                                    <div class="info-item">
+                                        <label>Disk Size:</label>
+                                        <span id="db-size">Click Refresh</span>
+                                    </div>
+                                    <div class="info-item">
+                                        <label>Tables:</label>
+                                        <span id="db-table-count">Click Refresh</span>
+                                    </div>
+                                    <div class="info-item">
+                                        <label>Users:</label>
+                                        <span id="db-user-count">Click Refresh</span>
+                                    </div>
+                                    <div class="info-item">
+                                        <label>Live Sessions:</label>
+                                        <span id="db-live-count">Click Refresh</span>
+                                    </div>
+                                    <div class="info-item">
+                                        <label>Process Records:</label>
+                                        <span id="db-process-count">Click Refresh</span>
+                                    </div>
+                                    <div class="info-item">
+                                        <label>Active Recorders:</label>
+                                        <span id="db-active-recorder-count">Click Refresh</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>

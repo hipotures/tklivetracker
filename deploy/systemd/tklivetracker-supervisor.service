@@ -1,0 +1,14 @@
+[Unit]
+Description=TkLiveTracker recording supervisor
+After=tklivetracker-monitor.service
+PartOf=tklivetracker.target
+
+[Service]
+Type=simple
+WorkingDirectory=__INSTALL_DIR__
+ExecStart=__UV_PATH__ run python selenium_supervisor.py --config __INSTALL_DIR__/config.yaml --server
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=tklivetracker.target

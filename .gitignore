@@ -1,0 +1,47 @@
+# Python environments, caches, and reports
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Editor and operating-system artifacts
+*.swp
+*.swo
+.DS_Store
+
+# Local configuration and credentials
+.env
+config.yaml
+private/
+private.old/
+recorder/cookies.json
+recorder/telegram.json
+*.session
+.codex/
+
+# Runtime databases and logs
+*.sqlite
+*.sqlite.*
+*.sqlite-*
+*.db
+*.db.*
+*.db-*
+*.log
+supervisor.lock
+
+# Runtime output
+recordings/
+recordings_fav/
+inactive_users/
+logs/
+backup/
+tmp/
+*.mp4
+*.flv
+*.ts
+
+# Optional local tools and binaries
+bin/
+newt

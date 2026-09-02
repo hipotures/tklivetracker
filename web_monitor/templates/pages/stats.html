@@ -1,0 +1,258 @@
+                <!-- Stats Page -->
+                <div id="stats-page" class="page">
+                    <div class="page-header">
+                        <div>
+                            <h2>System Statistics</h2>
+                            <p class="page-subtitle">System overview and recording activity</p>
+                        </div>
+                    </div>
+
+                    <!-- System Overview -->
+                    <div class="stats-overview">
+                        <h3>System Overview</h3>
+                        <div class="stats-grid">
+                            <div class="stat-card">
+                                <div class="stat-value" id="stats-total-users">--</div>
+                                <div class="stat-label">Total Users</div>
+                            </div>
+                            <div class="stat-card">
+                                <div class="stat-value" id="stats-active-users">--</div>
+                                <div class="stat-label">Active Users</div>
+                            </div>
+                            <div class="stat-card live">
+                                <div class="stat-value" id="stats-live-users">--</div>
+                                <div class="stat-label">Live Users</div>
+                            </div>
+                            <div class="stat-card">
+                                <div class="stat-value" id="stats-favorites">--</div>
+                                <div class="stat-label">Favorites</div>
+                            </div>
+                            {% if feature_flags.legacySchedulerStatsEnabled %}
+                            <div class="stat-card">
+                                <div class="stat-value" id="stats-cycle-time">--</div>
+                                <div class="stat-label">Est. Cycle Time</div>
+                            </div>
+                            {% endif %}
+                        </div>
+                    </div>
+
+                    {% if feature_flags.legacySchedulerStatsEnabled %}
+                    <!-- Stats Controls -->
+                    <div class="stats-controls">
+                        <div class="checkbox-container">
+                            <label class="checkbox-label">
+                                <input type="checkbox" id="active-only-filter" checked>
+                                <span class="checkmark"></span>
+                                Show only active users (for tables below)
+                            </label>
+                        </div>
+                    </div>
+
+                    <!-- Delay Analysis -->
+                    <div class="stats-delays">
+                        <h3>Delay Analysis</h3>
+                        <div class="delay-stats-grid">
+                            <div class="stat-card delay-no-delay">
+                                <div class="stat-value" id="delay-no-delay-count">--</div>
+                                <div class="stat-label">No Delay</div>
+                            </div>
+                            <div class="stat-card delay-0-60">
+                                <div class="stat-value" id="delay-0-60-count">--</div>
+                                <div class="stat-label">0-60s</div>
+                            </div>
+                            <div class="stat-card delay-60-120">
+                                <div class="stat-value" id="delay-60-120-count">--</div>
+                                <div class="stat-label">60-120s</div>
+                            </div>
+                            <div class="stat-card delay-120-180">
+                                <div class="stat-value" id="delay-120-180-count">--</div>
+                                <div class="stat-label">120-180s</div>
+                            </div>
+                            <div class="stat-card delay-180-plus">
+                                <div class="stat-value" id="delay-180-plus-count">--</div>
+                                <div class="stat-label">180s+</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Users with Max Delays Table -->
+                    <div class="stats-users-delays">
+                        <div class="stats-table-header">
+                            <h3 id="delays-table-title">Users with Max Delays</h3>
+                            <div class="stats-sort-controls">
+                                <label for="delays-limit">Limit:</label>
+                                <select id="delays-limit">
+                                    <option value="10" selected>10</option>
+                                    <option value="25">25</option>
+                                    <option value="50">50</option>
+                                </select>
+                                <label for="stats-sort-by">Sort by:</label>
+                                <select id="stats-sort-by">
+                                    <option value="delay_seconds" selected>Delay</option>
+                                    <option value="check_interval">Interval</option>
+                                    <option value="next_check">Next Check</option>
+                                </select>
+                                <select id="stats-sort-order">
+                                    <option value="desc" selected>Descending</option>
+                                    <option value="asc">Ascending</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="stats-table-container">
+                            <table class="stats-table">
+                                <thead>
+                                    <tr>
+                                        <th>Username</th>
+                                        <th>Delay</th>
+                                        <th>Interval</th>
+                                        <th>Next Check</th>
+                                        <th>Status</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="stats-delays-table-body">
+                                    <!-- Delays data will be populated here -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- Interval Distribution -->
+                    <div class="stats-intervals">
+                        <h3>Check Interval Distribution</h3>
+                        <div id="intervals-distribution" class="intervals-distribution">
+                            <!-- Interval cards will be populated dynamically by JavaScript -->
+                        </div>
+                    </div>
+
+                    <!-- Users by Interval (shown when interval is clicked) -->
+                    <div id="stats-interval-users" class="stats-interval-users" style="display: none; margin-bottom: 2rem;">
+                        <div class="stats-table-header">
+                            <h3 id="interval-users-title">Users with Interval</h3>
+                            <div class="stats-sort-controls">
+                                <label for="interval-users-limit">Limit:</label>
+                                <select id="interval-users-limit">
+                                    <option value="10" selected>10</option>
+                                    <option value="25">25</option>
+                                    <option value="50">50</option>
+                                </select>
+                                <label for="interval-users-sort-by">Sort by:</label>
+                                <select id="interval-users-sort-by">
+                                    <option value="username" selected>Username</option>
+                                    <option value="delay_seconds">Delay</option>
+                                    <option value="next_check">Next Check</option>
+                                </select>
+                                <select id="interval-users-sort-order">
+                                    <option value="asc" selected>Ascending</option>
+                                    <option value="desc">Descending</option>
+                                </select>
+                                <button id="close-interval-users" class="btn btn-secondary btn-sm">Close</button>
+                            </div>
+                        </div>
+                        <div class="stats-table-container">
+                            <table class="stats-table">
+                                <thead>
+                                    <tr>
+                                        <th>Username</th>
+                                        <th>Delay</th>
+                                        <th>Next Check</th>
+                                        <th>Status</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="interval-users-table-body">
+                                    <!-- Interval users data will be populated here -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                    {% endif %}
+
+                    <!-- Newest Users -->
+                    <div class="stats-new-users">
+                        <div class="stats-table-header">
+                            <h3>Newest Users</h3>
+                            <div class="stats-sort-controls">
+                                <label for="new-users-limit">Limit:</label>
+                                <select id="new-users-limit">
+                                    <option value="10" selected>10</option>
+                                    <option value="25">25</option>
+                                    <option value="50">50</option>
+                                </select>
+                                <label for="new-users-sort-by">Sort by:</label>
+                                <select id="new-users-sort-by">
+                                    <option value="added_at" selected>Added Date</option>
+                                    <option value="username">Username</option>
+                                    {% if feature_flags.legacySchedulerStatsEnabled %}
+                                    <option value="check_interval">Interval</option>
+                                    {% endif %}
+                                    <option value="total_lives">Total Lives</option>
+                                </select>
+                                <select id="new-users-sort-order">
+                                    <option value="desc" selected>Descending</option>
+                                    <option value="asc">Ascending</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="stats-table-container">
+                            <table class="stats-table">
+                                <thead>
+                                    <tr>
+                                        <th>User</th>
+                                        <th>Added</th>
+                                        {% if feature_flags.legacySchedulerStatsEnabled %}
+                                        <th>Interval</th>
+                                        {% endif %}
+                                        <th>Total Lives</th>
+                                        <th>Status</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="new-users-table-body">
+                                    <!-- New users data will be populated here -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- Recent Live Users -->
+                    <div class="stats-recent-live-users">
+                        <div class="stats-table-header">
+                            <h3>Recent Live Users</h3>
+                            <div class="stats-sort-controls">
+                                <label for="recent-live-users-limit">Limit:</label>
+                                <select id="recent-live-users-limit">
+                                    <option value="10" selected>10</option>
+                                    <option value="25">25</option>
+                                    <option value="50">50</option>
+                                </select>
+                                <label for="recent-live-users-sort-by">Sort by:</label>
+                                <select id="recent-live-users-sort-by">
+                                    <option value="last_live_at" selected>Last Live</option>
+                                    <option value="username">Username</option>
+                                    {% if feature_flags.legacySchedulerStatsEnabled %}
+                                    <option value="check_interval">Interval</option>
+                                    {% endif %}
+                                    <option value="total_lives">Total Lives</option>
+                                </select>
+                                <select id="recent-live-users-sort-order">
+                                    <option value="desc" selected>Descending</option>
+                                    <option value="asc">Ascending</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="stats-table-container">
+                            <table class="stats-table">
+                                <thead>
+                                    <tr>
+                                        <th>User</th>
+                                        <th>Last Live</th>
+                                        <th>Currently Live</th>
+                                        <th>Total Lives</th>
+                                        <th>Status</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="recent-live-users-table-body">
+                                    <!-- Recent live data will be populated here -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>

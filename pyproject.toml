@@ -1,0 +1,38 @@
+[project]
+name = "tklivetracker"
+version = "0.1.0"
+description = "TikTok live-stream monitoring and recording with persistent process management"
+readme = "README.md"
+requires-python = ">=3.12"
+license = "MIT"
+authors = [{ name = "hipotures" }]
+classifiers = [
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3.12",
+]
+dependencies = [
+    "curl-cffi>=0.15.0",
+    "flask>=3.1.3",
+    "psutil>=7.2.1",
+    "pyyaml>=6.0.3",
+    "requests>=2.33.0",
+    "selenium>=4.39.0",
+]
+
+[project.optional-dependencies]
+telegram-upload = [
+    "pyrogram>=2.0.106",
+    "tgcrypto>=1.2.5",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.24.0",
+]
+
+[tool.uv]
+default-groups = []
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

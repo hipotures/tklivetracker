@@ -1,0 +1,114 @@
+<!-- Users Management Page -->
+<div id="users-page" class="page">
+    <div class="page-header">
+        <div>
+            <h2>Users Management</h2>
+            <p class="page-subtitle">Manage all monitored users</p>
+        </div>
+    </div>
+
+    <!-- Users Controls -->
+    <div class="users-controls">
+        <!-- Search -->
+        <div class="search-section">
+            <div class="search-input-wrapper">
+                <label class="visually-hidden" for="users-search">Search users</label>
+                <input type="text"
+                       id="users-search"
+                       placeholder="Search..."
+                       class="input-field search-input"
+                       maxlength="255"
+                       autocomplete="off"
+                       spellcheck="false">
+                <button id="clear-search" class="clear-search-btn" aria-label="Clear search" type="button">
+                    <svg class="ui-icon" aria-hidden="true"><use href="{{ url_for('static', filename='vendor/lucide/icons.svg') }}#x"></use></svg>
+                </button>
+            </div>
+        </div>
+
+        <!-- Filters -->
+        <div class="filters-section">
+            <select id="live-filter" class="select-field" aria-label="Filter by live status">
+                <option value="all">All Status</option>
+                <option value="live">Live Only</option>
+                <option value="offline">Offline Only</option>
+            </select>
+            <select id="active-filter" class="select-field" aria-label="Filter by user status">
+                <option value="all">All Users</option>
+                <option value="active" selected>Active Only</option>
+                <option value="inactive">Inactive Only</option>
+                <option value="notifications_enabled">Notifications On</option>
+                <option value="notifications_disabled">Notifications Off</option>
+            </select>
+            <button id="clear-filters" class="btn btn-secondary" type="button">Clear Filters</button>
+        </div>
+
+        <!-- Sort -->
+        <div class="sort-section">
+            <select id="sort-by" class="select-field" aria-label="Sort users by">
+                <option value="username">Username</option>
+                <option value="interval">Check Interval</option>
+                <option value="live">Live Status</option>
+                <option value="active">Active Status</option>
+                <option value="total_lives">Total Lives</option>
+                {% if feature_flags.legacySchedulerStatsEnabled %}
+                <option value="next_check">Next Check</option>
+                {% endif %}
+            </select>
+            <select id="sort-order" class="select-field" aria-label="Sort direction">
+                <option value="asc">Ascending</option>
+                <option value="desc">Descending</option>
+            </select>
+        </div>
+    </div>
+
+    <!-- Top Pagination -->
+    <nav class="pagination-container" aria-label="Users pagination, top">
+        <div class="pagination-info">
+            <span id="pagination-info-top" aria-live="polite">--</span>
+        </div>
+        <div class="pagination-controls">
+            <button id="prev-page-top" class="btn btn-secondary" type="button" disabled>Previous</button>
+            <span id="page-numbers-top" class="page-numbers">
+                <!-- Page numbers will be populated here -->
+            </span>
+            <button id="next-page-top" class="btn btn-secondary" type="button" disabled>Next</button>
+        </div>
+    </nav>
+
+    <!-- Users Table -->
+    <div class="users-table-container">
+        <table id="users-table" class="users-table{% if not feature_flags.legacySchedulerStatsEnabled %} users-table-no-scheduler{% endif %}">
+            <caption class="visually-hidden">Monitored TikTok users</caption>
+            <thead>
+                <tr>
+                    <th scope="col" title="Username">User</th>
+                    <th scope="col" title="Live Status, Active Status, Favorite, Notifications">Status</th>
+                    <th scope="col" title="Check Interval (seconds)">Interval</th>
+                    <th scope="col" title="Total Recorded Lives">Lives</th>
+                    {% if feature_flags.legacySchedulerStatsEnabled %}
+                    <th scope="col" title="Next Check (countdown)">Next</th>
+                    {% endif %}
+                    <th scope="col" title="Available Actions">Actions</th>
+                </tr>
+            </thead>
+            <tbody id="users-table-body">
+                <!-- Users will be populated here -->
+            </tbody>
+        </table>
+    </div>
+
+    <!-- Pagination -->
+    <nav class="pagination-container" aria-label="Users pagination, bottom">
+        <div class="pagination-info">
+            <span id="pagination-info" aria-live="polite">--</span>
+        </div>
+        <div class="pagination-controls">
+            <button id="prev-page" class="btn btn-secondary" type="button" disabled>Previous</button>
+            <span id="page-numbers" class="page-numbers">
+                <!-- Page numbers will be populated here -->
+            </span>
+            <button id="next-page" class="btn btn-secondary" type="button" disabled>Next</button>
+        </div>
+    </nav>
+</div>

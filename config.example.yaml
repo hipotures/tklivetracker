@@ -1,0 +1,103 @@
+# TkLiveTracker configuration. Copy this file to config.yaml.
+# config.yaml may contain credentials and must never be committed.
+
+paths:
+  recordings_path: ./recordings
+  recordings_fav_path: ./recordings_fav
+  inactive_users_path: ./inactive_users
+  log_path: ./logs
+
+database:
+  path: ./db.sqlite
+
+logging:
+  log_level: INFO
+  supervisor_log_file: supervisor.log
+  selenium_log_file: selenium.log
+
+intervals:
+  min_user_interval: 1
+  default_interval: 300
+  default_check_interval: 300
+  after_live_check_interval: 60
+  waf_block_pause_duration: 60
+  supervisor_heartbeat_interval: 30
+
+persistent_live_system:
+  enabled: true
+  detached_process_mode: true
+  max_live_processes: 20
+  health_checks_enabled: true
+  file_health_checks_enabled: true
+  health_check_interval: 60
+  file_check_interval: 60
+  process_restart_delay: 10
+  max_restart_attempts: 3
+  graceful_shutdown_timeout: 30
+  force_kill_timeout: 10
+  shutdown_delay_between_processes: 1
+  no_stream_data_retry_cooldown: 300
+  segment_on_reconnect: false
+  metadata_enabled: false
+  compressed_output_path: ./recordings
+  lock_file_path: ./supervisor.lock
+  recorder_log_path: ./tmp/recorder-logs
+
+selenium:
+  database_path: ./selenium_live.db
+  refresh_interval: 60
+  chrome_profile_path: ./private/selenium_chrome_profile
+  cache_dir: ./tmp/chrome-cache
+  screenshots_enabled: false
+  screenshots_dir: ./tmp/screenshots
+  screenshots_retention_days: 30
+  periodic_restart_enabled: true
+  periodic_restart_interval: 3600
+  hang_watchdog_enabled: true
+  hang_timeout_seconds: 180
+  hang_grace_seconds: 15
+  simulation_enabled: true
+  simulation_pages:
+    - /
+  simulation_wait_min: 10
+  simulation_wait_max: 30
+  supervisor:
+    stats_interval: 300
+
+# Supervisor alerts use the Telegram Bot API. Recorder uploads use Pyrogram.
+telegram:
+  notifications:
+    enabled: false
+    bot_token: ""
+    chat_id: ""
+    startup_message_enabled: true
+    inactivity_alert_enabled: true
+    inactivity_threshold_seconds: 600
+    active_window_enabled: true
+    active_window_start_hour: 8
+    active_window_end_hour: 21
+    recovery_message_enabled: true
+    request_timeout_seconds: 5
+    disable_notification: true
+    state_file: ./private/telegram-notification-state.json
+  upload:
+    api_id: ""
+    api_hash: ""
+    bot_token: ""
+    chat_id: ""
+    session_path: ./private
+
+# The Selenium monitor creates this runtime cookie file after first login.
+cookies:
+  enabled: true
+  cookies_source: json
+  cookie_json_file: ./private/cookies_full.json
+
+# 0.0.0.0 supports trusted-LAN access but exposes the dashboard through every
+# interface permitted by the host firewall. The dashboard has no authentication.
+web_monitor:
+  host: 0.0.0.0
+  port: 5001
+  # Add exact HTTPS origins only when a trusted reverse proxy exposes the UI.
+  # Forwarded headers are deliberately ignored by default.
+  allowed_origins: []

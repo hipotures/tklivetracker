@@ -1,0 +1,105 @@
+                <!-- Analytics Page -->
+                <div id="analytics-page" class="page">
+                    <div class="page-header">
+                        <div>
+                            <h2>Live Activity Analytics</h2>
+                            <p class="page-subtitle">Historical live recording and user growth trends</p>
+                        </div>
+                    </div>
+
+                    <!-- Analytics Controls -->
+                    <div class="analytics-controls-simple">
+                        <div class="analytics-view-group">
+                            <label class="analytics-label" for="analytics-view">View:</label>
+                            <select id="analytics-view" class="analytics-select">
+                                <option value="hourly">Hourly (24 hours)</option>
+                                <option value="daily" selected>Daily (30 days)</option>
+                                <option value="weekly">Weekly (Quarter)</option>
+                                <option value="last24h">Last 24h</option>
+                                <option value="last7d">Last 7d</option>
+                                <option value="last30d">Last 30d</option>
+                                <option value="last365d">Last 1y</option>
+                            </select>
+                        </div>
+                        <div class="analytics-nav-group">
+                            <button id="analytics-prev" class="btn btn-secondary btn-sm" type="button">← Previous</button>
+                            <span id="analytics-date-display" class="date-display" aria-live="polite">Loading...</span>
+                            <button id="analytics-next" class="btn btn-secondary btn-sm" type="button">Next →</button>
+                        </div>
+                        <button id="analytics-refresh" class="btn btn-primary btn-sm" type="button">Refresh Data</button>
+                    </div>
+
+                    <div id="chart-library-error" class="component-error hidden" role="alert">
+                        <div>
+                            <strong>Charts are unavailable.</strong>
+                            Summary data is still shown. Check your connection, then reload the page.
+                        </div>
+                        <button id="reload-chart-library" class="btn btn-secondary btn-sm" type="button">Reload page</button>
+                    </div>
+
+                    <!-- Analytics Tabs -->
+                    <div class="analytics-tabs" role="tablist" aria-label="Analytics data">
+                        <button id="live-sessions-tab-button" class="analytics-tab active" data-tab="live-sessions" type="button" role="tab" aria-selected="true" aria-controls="live-sessions-tab">Live Sessions</button>
+                        <button id="new-users-tab-button" class="analytics-tab" data-tab="new-users" type="button" role="tab" aria-selected="false" aria-controls="new-users-tab">New Users</button>
+                    </div>
+
+                    <!-- Live Sessions Tab Content -->
+                    <div id="live-sessions-tab" class="analytics-tab-content active" role="tabpanel" aria-labelledby="live-sessions-tab-button">
+                        <!-- Analytics Summary -->
+                        <div class="analytics-summary">
+                            <div class="stat-card">
+                                <div class="stat-value" id="analytics-total-sessions">--</div>
+                                <div class="stat-label">Total Live Sessions</div>
+                            </div>
+                            <div class="stat-card">
+                                <div class="stat-value" id="analytics-unique-users">--</div>
+                                <div class="stat-label">Unique Users</div>
+                            </div>
+                            <div class="stat-card">
+                                <div class="stat-value" id="analytics-avg-sessions">--</div>
+                                <div class="stat-label">Avg Sessions/Period</div>
+                            </div>
+                            <div class="stat-card">
+                                <div class="stat-value" id="analytics-peak-period">--</div>
+                                <div class="stat-label">Peak Period</div>
+                            </div>
+                        </div>
+
+                        <!-- Analytics Chart -->
+                        <div class="analytics-chart-container">
+                            <canvas id="analytics-chart" width="800" height="400" role="img" aria-label="Live sessions and unique users over time">
+                                Live sessions and unique users chart. Summary values are listed above.
+                            </canvas>
+                        </div>
+
+                        <!-- Chart Legend -->
+                        <div class="analytics-legend">
+                            <div class="legend-item">
+                                <span class="legend-color" style="background-color: #3b82f6;"></span>
+                                <span class="legend-label">Live Sessions</span>
+                            </div>
+                            <div class="legend-item">
+                                <span class="legend-color" style="background-color: #10b981;"></span>
+                                <span class="legend-label">Unique Users</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- New Users Tab Content -->
+                    <div id="new-users-tab" class="analytics-tab-content" role="tabpanel" aria-labelledby="new-users-tab-button" hidden>
+                        <!-- New Users Chart -->
+                        <div class="analytics-chart-container">
+                            <canvas id="new-users-chart" width="800" height="400" role="img" aria-label="New users over time">
+                                New users chart.
+                            </canvas>
+                        </div>
+
+                        <!-- New Users Legend -->
+                        <div class="analytics-legend">
+                            <div class="legend-item">
+                                <span class="legend-color" style="background-color: #4f9cf9;"></span>
+                                <span class="legend-label">New Users</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
