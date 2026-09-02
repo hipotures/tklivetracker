@@ -85,9 +85,9 @@ TikTokRecorderApp.prototype.loadPreferences = function() {
                 'all', 'active', 'inactive', 'notifications_enabled', 'notifications_disabled'
             ];
             const allowedUserSorts = [
-                'username', 'interval', 'live', 'active', 'total_lives'
+                'username', 'live', 'active', 'total_lives'
             ];
-            if (this.legacySchedulerStatsEnabled) allowedUserSorts.push('next_check');
+            if (this.legacySchedulerStatsEnabled) allowedUserSorts.push('interval', 'next_check');
             const allowedAnalyticsViews = [
                 'hourly', 'daily', 'weekly', 'last24h', 'last7d', 'last30d',
                 'last365d'

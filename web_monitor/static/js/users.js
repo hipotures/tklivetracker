@@ -316,7 +316,7 @@ TikTokRecorderApp.prototype.renderUsersError = function(message) {
 TikTokRecorderApp.prototype.renderUsersTable = function() {
     const tbody = document.getElementById('users-table-body');
     if (!tbody) return;
-    const columnCount = this.legacySchedulerStatsEnabled ? 6 : 5;
+    const columnCount = this.legacySchedulerStatsEnabled ? 6 : 4;
 
     if (this.usersData.length === 0) {
         tbody.innerHTML = `
@@ -347,7 +347,7 @@ TikTokRecorderApp.prototype.renderUsersTable = function() {
                     ${user.notifications_enabled ? `<span class="status-icon status-notifications" title="Notifications enabled" aria-label="Notifications enabled">${this.icon('bell')}</span>` : ''}
                 </div>
             </td>
-            <td data-label="Interval">${this.escapeHtml(user.check_interval)}s</td>
+            ${this.legacySchedulerStatsEnabled ? `<td data-label="Interval">${this.escapeHtml(user.check_interval)}s</td>` : ''}
             <td data-label="Lives">${this.escapeHtml(user.total_lives)}</td>
             ${this.legacySchedulerStatsEnabled ? `<td data-label="Next">${this.formatNextCheck(user.next_check, user.is_active)}</td>` : ''}
             <td data-label="Actions">

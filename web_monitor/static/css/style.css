@@ -419,11 +419,10 @@ input[type="checkbox"] { width: 16px; height: 16px; accent-color: var(--accent);
 .users-table th:nth-child(4) { width: 10%; }
 .users-table th:nth-child(5) { width: 15%; }
 .users-table th:nth-child(6) { width: 27%; }
-.users-table-no-scheduler th:nth-child(1) { width: 24%; }
-.users-table-no-scheduler th:nth-child(2) { width: 15%; }
-.users-table-no-scheduler th:nth-child(3) { width: 13%; }
-.users-table-no-scheduler th:nth-child(4) { width: 10%; }
-.users-table-no-scheduler th:nth-child(5) { width: 38%; }
+.users-table-no-scheduler th:nth-child(1) { width: 28%; }
+.users-table-no-scheduler th:nth-child(2) { width: 17%; }
+.users-table-no-scheduler th:nth-child(3) { width: 12%; }
+.users-table-no-scheduler th:nth-child(4) { width: 43%; }
 .users-table th, .stats-table th { padding: 11px 14px; color: var(--text-muted); background: var(--surface-2); border-bottom: 1px solid var(--border); font-size: var(--font-size-xs); font-weight: 600; letter-spacing: .025em; text-align: left; }
 .users-table td, .stats-table td { padding: 12px 14px; color: var(--text-secondary); border-bottom: 1px solid var(--border); font-size: var(--font-size-sm); vertical-align: middle; font-variant-numeric: tabular-nums; }
 .users-table tbody tr:last-child td, .stats-table tbody tr:last-child td { border-bottom: 0; }

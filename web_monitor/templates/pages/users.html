@@ -47,7 +47,9 @@
         <div class="sort-section">
             <select id="sort-by" class="select-field" aria-label="Sort users by">
                 <option value="username">Username</option>
+                {% if feature_flags.legacySchedulerStatsEnabled %}
                 <option value="interval">Check Interval</option>
+                {% endif %}
                 <option value="live">Live Status</option>
                 <option value="active">Active Status</option>
                 <option value="total_lives">Total Lives</option>
@@ -84,7 +86,9 @@
                 <tr>
                     <th scope="col" title="Username">User</th>
                     <th scope="col" title="Live Status, Active Status, Favorite, Notifications">Status</th>
+                    {% if feature_flags.legacySchedulerStatsEnabled %}
                     <th scope="col" title="Check Interval (seconds)">Interval</th>
+                    {% endif %}
                     <th scope="col" title="Total Recorded Lives">Lives</th>
                     {% if feature_flags.legacySchedulerStatsEnabled %}
                     <th scope="col" title="Next Check (countdown)">Next</th>

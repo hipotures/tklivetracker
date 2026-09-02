@@ -78,7 +78,9 @@ def test_dashboard_hides_legacy_scheduler_stats_when_disabled(tmp_path: Path) ->
     assert "Check Interval Distribution" not in html
     assert "Users with Interval" not in html
     assert '<option value="check_interval">Interval</option>' not in html
+    assert '<option value="interval">Check Interval</option>' not in html
     assert '<option value="next_check">Next Check</option>' not in html
+    assert '<th scope="col" title="Check Interval (seconds)">Interval</th>' not in html
     assert '<th scope="col" title="Next Check (countdown)">Next</th>' not in html
     assert "users-table-no-scheduler" in html
     assert 'id="quick-add-form"' not in html
@@ -98,7 +100,9 @@ def test_dashboard_can_restore_legacy_scheduler_stats(tmp_path: Path) -> None:
     assert "Check Interval Distribution" in html
     assert "Users with Interval" in html
     assert '<option value="check_interval">Interval</option>' in html
+    assert '<option value="interval">Check Interval</option>' in html
     assert '<option value="next_check">Next Check</option>' in html
+    assert '<th scope="col" title="Check Interval (seconds)">Interval</th>' in html
     assert '<th scope="col" title="Next Check (countdown)">Next</th>' in html
     assert "users-table-no-scheduler" not in html
     assert 'id="quick-add-form"' in html

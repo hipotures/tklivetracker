@@ -120,6 +120,26 @@ def test_live_and_favorite_cards_leave_user_editing_to_users_page() -> None:
     assert 'data-user-action="edit"' in users_source
 
 
+def test_users_interval_column_follows_legacy_scheduler_flag() -> None:
+    project_root = Path(__file__).resolve().parent.parent
+    users_source = (
+        project_root / "web_monitor" / "static" / "js" / "users.js"
+    ).read_text(encoding="utf-8")
+    preferences_source = (
+        project_root / "web_monitor" / "static" / "js" / "preferences.js"
+    ).read_text(encoding="utf-8")
+
+    assert (
+        "const columnCount = this.legacySchedulerStatsEnabled ? 6 : 4;"
+        in users_source
+    )
+    assert (
+        'this.legacySchedulerStatsEnabled ? `<td data-label="Interval">'
+        in users_source
+    )
+    assert "allowedUserSorts.push('interval', 'next_check')" in preferences_source
+
+
 def test_dashboard_live_cards_are_compact_without_reducing_live_now_details() -> None:
     project_root = Path(__file__).resolve().parent.parent
     source = (
