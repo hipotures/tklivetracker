@@ -1,0 +1,76 @@
+version: 1
+captures:
+- name: dashboard-dark
+  page: dashboard
+  theme: dark
+  filename: 01-dashboard-dark.png
+  actions: []
+- name: dashboard-light
+  page: dashboard
+  theme: light
+  filename: 02-dashboard-light.png
+  actions: []
+- name: users-dark
+  page: users
+  theme: dark
+  filename: 03-users-dark.png
+  actions: []
+- name: users-light
+  page: users
+  theme: light
+  filename: 04-users-light.png
+  actions: []
+- name: live-dark
+  page: live
+  theme: dark
+  filename: 05-live-dark.png
+  actions: []
+- name: favorites-dark
+  page: favorites
+  theme: dark
+  filename: 06-favorites-dark.png
+  actions: []
+- name: stats-dark
+  page: stats
+  theme: dark
+  filename: 07-stats-dark.png
+  actions: []
+- name: analytics-dark
+  page: analytics
+  theme: dark
+  filename: 08-analytics-dark.png
+  actions: []
+- name: admin-dark
+  page: admin
+  theme: dark
+  filename: 09-admin-dark.png
+  actions: []
+- name: users-edit-modal
+  filename: 10-users-edit-modal-dark.png
+  page: users
+  theme: dark
+  actions:
+  - locator:
+      by: screenshot_id
+      index: 5
+      value: user-edit
+    type: click
+  scroll:
+    elements: []
+    window:
+      x: 0
+      y: 0
+- name: analytics-dark-new-users
+  filename: 11-analytics-dark-new-users-dark.png
+  page: analytics
+  theme: dark
+  actions:
+  - locator:
+      by: id
+      value: new-users-tab-button
+    type: click
+  scroll:
+    elements: []
+    window:
+      x: 0
+      y: 0
