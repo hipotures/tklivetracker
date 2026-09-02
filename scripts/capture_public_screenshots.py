@@ -94,6 +94,23 @@ USERNAME_SELECTORS = (
     ".username-link-button",
 )
 
+CAPTURE_SCROLLBAR_STYLE_ID = "__tklt-public-capture-scrollbars"
+CAPTURE_SCROLLBAR_CSS = """
+    html,
+    body,
+    * {
+        scrollbar-width: none !important;
+        -ms-overflow-style: none !important;
+        scrollbar-gutter: stable !important;
+    }
+
+    *::-webkit-scrollbar {
+        display: none !important;
+        width: 0 !important;
+        height: 0 !important;
+    }
+"""
+
 
 @dataclass(frozen=True)
 class CaptureResult:
@@ -130,6 +147,11 @@ def parse_args() -> argparse.Namespace:
         "--headed",
         action="store_true",
         help="Show the browser window instead of using headless Chrome.",
+    )
+    parser.add_argument(
+        "--show-scrollbars",
+        action="store_true",
+        help="Keep browser and nested-container scrollbars visible in captured PNGs.",
     )
     parser.add_argument(
         "--chrome-binary",
@@ -1673,7 +1695,36 @@ def reset_scroll(driver: webdriver.Chrome) -> None:
     )
 
 
-def capture_png(driver: webdriver.Chrome, output_path: Path) -> None:
+def configure_capture_scrollbars(driver: webdriver.Chrome, *, hide_scrollbars: bool) -> None:
+    """Temporarily hide browser and nested scrollbars for a PNG capture."""
+    driver.execute_script(
+        """
+        const styleId = arguments[0];
+        const css = arguments[1];
+        const hideScrollbars = arguments[2];
+        const existing = document.getElementById(styleId);
+        if (!hideScrollbars) {
+            if (existing) existing.remove();
+            return;
+        }
+        const style = existing || document.createElement('style');
+        style.id = styleId;
+        style.textContent = css;
+        if (!existing) document.head.appendChild(style);
+        """,
+        CAPTURE_SCROLLBAR_STYLE_ID,
+        CAPTURE_SCROLLBAR_CSS,
+        hide_scrollbars,
+    )
+
+
+def capture_png(
+    driver: webdriver.Chrome,
+    output_path: Path,
+    *,
+    hide_scrollbars: bool,
+) -> None:
+    configure_capture_scrollbars(driver, hide_scrollbars=hide_scrollbars)
     payload = driver.execute_cdp_cmd(
         "Page.captureScreenshot",
         {
@@ -1874,7 +1925,11 @@ def main() -> int:
             time.sleep(0.12)
 
             verify_anonymization(driver, actual_page)
-            capture_png(driver, output_dir / filename)
+            capture_png(
+                driver,
+                output_dir / filename,
+                hide_scrollbars=not args.show_scrollbars,
+            )
             results.append(CaptureResult(actual_page, theme, filename, replacements))
             print("OK")
 
