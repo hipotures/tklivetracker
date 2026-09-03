@@ -9,9 +9,6 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
-from utils.username import normalize_tiktok_username
-
-
 DEFAULT_CONFIG_PATH = Path.home() / ".config" / "ttracker" / "fav.json"
 
 
@@ -63,7 +60,7 @@ def determine_username(config: TtDelConfig, cwd: os.PathLike | str) -> Optional[
 
     for root in roots:
         username = _relative_first_component(cwd_path, _absolute_lexical(root))
-        if username and normalize_tiktok_username(username, strip_at=False) == username:
+        if username:
             return username
 
     return None

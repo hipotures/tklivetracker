@@ -8,9 +8,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
-from utils.username import normalize_tiktok_username
-
-
 DEFAULT_CONFIG_PATH = Path.home() / ".config" / "ttracker" / "fav.json"
 
 
@@ -70,15 +67,15 @@ def determine_action(config: TtFavConfig, cwd: os.PathLike | str) -> Optional[Tt
     )
 
     fav_username = _relative_first_component(cwd_path, fav_root)
-    if fav_username and normalize_tiktok_username(fav_username, strip_at=False) == fav_username:
+    if fav_username:
         return TtFavAction(fav_username, False, "disabled")
 
     source_username = _relative_first_component(cwd_path, source_root)
-    if source_username and normalize_tiktok_username(source_username, strip_at=False) == source_username:
+    if source_username:
         return TtFavAction(source_username, True, "enabled")
 
     recordings_username = _relative_first_component(cwd_path, recordings_root)
-    if recordings_username and normalize_tiktok_username(recordings_username, strip_at=False) == recordings_username:
+    if recordings_username:
         return TtFavAction(recordings_username, True, "enabled")
 
     return None
