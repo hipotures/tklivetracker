@@ -277,5 +277,45 @@ def test_restart_webdriver_skips_recreate_when_shutdown_requested(monkeypatch, t
     restarted = monitor._restart_webdriver()
 
     assert restarted is False
-    assert cleanup_calls == [tmp_path / "profile"]
+    assert cleanup_calls == []
     assert monitor.driver_manager.create_driver_called is False
+
+
+def test_run_monitor_does_not_restart_after_shutdown_during_webdriver_crash() -> None:
+    class ConfigManager:
+        def get_refresh_interval(self):
+            return 60
+
+    class SessionManagerStub:
+        def check_login_status(self):
+            return True
+
+    monitor = EnhancedLiveMonitor.__new__(EnhancedLiveMonitor)
+    monitor.config_manager = ConfigManager()
+    monitor.session_manager = SessionManagerStub()
+    monitor.running = True
+    monitor.shutdown_requested = False
+    monitor.force_restart_requested = False
+    monitor._cycle_id = 0
+    monitor._touch_progress = lambda stage: None
+    monitor._handle_pending_driver_restart = lambda: False
+
+    def crash_during_shutdown():
+        monitor.shutdown_requested = True
+        raise RequestsConnectionError("Connection refused")
+
+    monitor.live_user_detector = type(
+        "LiveUserDetectorStub",
+        (),
+        {"check_live_users": staticmethod(crash_during_shutdown)},
+    )()
+    monitor._restart_webdriver = lambda: pytest.fail("WebDriver restart attempted during shutdown")
+    monitor._force_process_restart = lambda reason: pytest.fail(
+        "Process restart attempted during shutdown"
+    )
+    shutdown_calls = []
+    monitor._perform_shutdown = lambda: shutdown_calls.append(True)
+
+    monitor.run_monitor()
+
+    assert shutdown_calls == [True]

@@ -1851,6 +1851,9 @@ class EnhancedLiveMonitor:
         with self._force_restart_lock:
             if self.force_restart_requested:
                 return
+            if self.shutdown_requested:
+                logging.info("⏭️ Skipping forced process restart because shutdown was requested")
+                return
             self.force_restart_requested = True
 
         self.shutdown_requested = True
@@ -1970,6 +1973,9 @@ class EnhancedLiveMonitor:
                 break
             except Exception as e:
                 self._touch_progress("monitor_exception")
+                if self.shutdown_requested:
+                    logging.info("⏭️ Skipping WebDriver recovery because shutdown was requested")
+                    break
                 error_msg = str(e)
                 if is_fatal_webdriver_error(e):
                     logging.warning(f"🔄 WebDriver crashed ({error_msg}), attempting restart...")
@@ -1992,6 +1998,11 @@ class EnhancedLiveMonitor:
         try:
             logging.info("🔄 Attempting to restart WebDriver...")
             self._touch_progress("restarting_webdriver_start")
+
+            if getattr(self, "shutdown_requested", False):
+                logging.info("⏭️ Skipping WebDriver restart because shutdown was requested")
+                self._touch_progress("restarting_webdriver_skipped_shutdown")
+                return False
 
             # Clean up existing driver
             if self.driver:
