@@ -138,3 +138,34 @@ Expected local data includes:
 These files are ignored and must not be published. Do not delete stale-looking
 PID, metadata, or recording files without first proving that no live recorder
 owns them.
+# Terminal launcher
+
+Choose exactly one terminal backend (no arguments prints usage):
+
+```bash
+scripts/0_run.sh --herdr
+scripts/0_run.sh --tmux
+scripts/0_run.sh --tmux status
+scripts/0_run.sh --tmux stop
+scripts/0_run.sh --tmux restart
+```
+
+Both backends support `start` (default), `stop`, `status`, and `restart`.
+Herdr requires an existing workspace named `TTRACKER` and the `herdr` and `jq`
+commands. The tmux backend creates session `ttracker` with three windows,
+`monitor`, `supervisor`, and `web`, each containing one service pane.
+Attach with `tmux attach -t ttracker`; switch windows with Ctrl+b then n/p,
+and detach with Ctrl+b then d. Both backends require `uv`, `flock`, and `ps`.
+
+Commands are defined inside the launcher and run from the project directory.
+The supervisor starts with `--server --debug` and owns detached recorders.
+The launcher does not read `docs/START`. Use one backend for a deployment;
+selecting a different backend does not migrate services or detect processes
+running in the other terminal application.
+
+Start skips busy panes. Stop sends Ctrl+C and leaves the terminals open;
+it does not wait or invoke recorder cleanup commands. Restart waits up to
+`STOP_WAIT_SECONDS` (default 15) and fails without starting services if any
+pane is still busy or its state is unknown. In tmux, exited panes retain output
+and are reused by start. Keep one pane per service window: ambiguous windows
+are rejected. Runtime verification should be performed explicitly by the operator.
