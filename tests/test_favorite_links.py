@@ -38,6 +38,7 @@ def test_sync_favorite_links_adds_and_removes_only_symlinks(tmp_path: Path) -> N
     report = sync_favorite_links(conn, recordings_path, fav_path)
 
     assert (fav_path / "fav_user").is_symlink()
+    assert (fav_path / "fav_user").readlink() == Path("../recordings/fav_user")
     assert (fav_path / "fav_user").resolve() == (recordings_path / "fav_user").resolve()
     assert not (fav_path / "plain_user").exists()
     assert (recordings_path / "plain_user").is_dir()
@@ -63,6 +64,33 @@ def test_sync_favorite_links_reports_conflict_for_real_directory(tmp_path: Path)
     assert report.added == []
     assert len(report.conflicts) == 1
     assert "not a symlink" in report.conflicts[0]
+
+
+def test_sync_favorite_links_replaces_absolute_symlink_with_relative_target(tmp_path: Path) -> None:
+    conn = _create_users_db(tmp_path / "users.db")
+    conn.execute("INSERT INTO users (username, is_favorite) VALUES (?, ?)", ("fav_user", 1))
+    conn.commit()
+
+    tt_root = tmp_path / "TT"
+    compressed_path = tt_root / "compressed"
+    fav_path = tt_root / "recordings_fav"
+    (compressed_path / "fav_user").mkdir(parents=True)
+    fav_path.mkdir()
+    link = fav_path / "fav_user"
+    link.symlink_to(compressed_path / "fav_user", target_is_directory=True)
+
+    report = sync_favorite_links(conn, compressed_path, fav_path)
+
+    assert link.readlink() == Path("../compressed/fav_user")
+    assert report.fixed == ["fav_user"]
+
+    second_report = sync_favorite_links(conn, compressed_path, fav_path)
+    assert not second_report.has_changes()
+
+    archive_root = tmp_path / "archive"
+    tt_root.rename(archive_root)
+    archived_link = archive_root / "recordings_fav" / "fav_user"
+    assert archived_link.resolve() == (archive_root / "compressed" / "fav_user").resolve()
 
 
 def test_sync_favorite_links_removes_symlink_for_unknown_user(tmp_path: Path) -> None:
@@ -155,7 +183,7 @@ def test_sync_favorite_links_targets_missing_source_for_future_recordings(tmp_pa
 
     link = fav_path / "fav_user"
     assert link.is_symlink()
-    assert link.readlink() == compressed_path / "fav_user"
+    assert link.readlink() == Path("../compressed/fav_user")
     assert not link.exists()
     assert report.fixed == ["fav_user"]
     assert report.missing_sources == ["fav_user"]

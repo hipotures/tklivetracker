@@ -112,7 +112,7 @@ def test_favorite_endpoint_does_not_log_noop_sync_at_info(tmp_path: Path, caplog
     fav_path = tmp_path / "recordings_fav"
     (recordings_path / "alice").mkdir(parents=True)
     fav_path.mkdir()
-    (fav_path / "alice").symlink_to(recordings_path / "alice", target_is_directory=True)
+    (fav_path / "alice").symlink_to("../recordings/alice", target_is_directory=True)
     _create_web_favorite_db(db_path, favorite=1)
     app = _app_with_paths(db_path, recordings_path, fav_path)
 

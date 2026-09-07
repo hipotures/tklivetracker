@@ -28,8 +28,10 @@ database:
   path: ./db.sqlite
 ```
 
-`recordings_fav_path` is an optional symlink view. `inactive_users_path` is used
-when a supported user-deactivation operation moves a recording directory.
+`recordings_fav_path` is an optional symlink view. Its links use targets relative
+to the favorites directory so the source and favorites directories can be moved
+or archived together. `inactive_users_path` is used when a supported
+user-deactivation operation moves a recording directory.
 
 ## Supervisor intervals
 

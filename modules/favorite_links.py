@@ -25,9 +25,23 @@ def _path(path: os.PathLike | str) -> Path:
 
 def _same_target(link_path: Path, target_path: Path) -> bool:
     try:
-        return link_path.resolve(strict=False) == target_path.resolve(strict=False)
+        relative_target = Path(
+            os.path.relpath(
+                target_path.resolve(strict=False),
+                start=link_path.parent.resolve(strict=False),
+            )
+        )
+        return link_path.readlink() == relative_target
     except OSError:
         return False
+
+
+def _create_relative_symlink(link_path: Path, target_path: Path) -> None:
+    relative_target = os.path.relpath(
+        target_path.resolve(strict=False),
+        start=link_path.parent.resolve(strict=False),
+    )
+    link_path.symlink_to(relative_target, target_is_directory=True)
 
 
 def _users_has_column(conn: sqlite3.Connection, column_name: str) -> bool:
@@ -96,7 +110,7 @@ def sync_favorite_links(
                 if _same_target(link_path, source_path):
                     continue
                 link_path.unlink()
-                link_path.symlink_to(source_path, target_is_directory=True)
+                _create_relative_symlink(link_path, source_path)
                 report.fixed.append(user)
                 continue
 
@@ -104,7 +118,7 @@ def sync_favorite_links(
                 report.conflicts.append(f"{user}: {link_path} exists and is not a symlink")
                 continue
 
-            link_path.symlink_to(source_path, target_is_directory=True)
+            _create_relative_symlink(link_path, source_path)
             report.added.append(user)
         else:
             if link_path.is_symlink():
