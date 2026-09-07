@@ -139,9 +139,11 @@ def test_sync_favorite_links_ignores_inactive_favorites_but_removes_inactive_non
 
     assert (fav_path / "active_fav").is_symlink()
     assert (fav_path / "inactive_fav").is_symlink()
+    assert (fav_path / "inactive_fav").readlink() == Path("../recordings/inactive_fav")
     assert not (fav_path / "inactive_plain").is_symlink()
     assert not (fav_path / "deleted_fav").exists()
     assert report.added == ["active_fav"]
+    assert report.fixed == ["inactive_fav"]
     assert report.removed == ["inactive_plain"]
     assert report.missing_sources == []
 

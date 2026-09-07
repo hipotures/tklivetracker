@@ -101,6 +101,10 @@ def sync_favorite_links(
 
         if is_favorite:
             if user not in active_usernames:
+                if link_path.is_symlink() and not _same_target(link_path, source_path):
+                    link_path.unlink()
+                    _create_relative_symlink(link_path, source_path)
+                    report.fixed.append(user)
                 continue
 
             if not source_path.is_dir():
