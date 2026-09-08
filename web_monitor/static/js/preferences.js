@@ -63,6 +63,7 @@ TikTokRecorderApp.prototype.loadPreferences = function() {
 
         // Analytics page
         analyticsView: '30d',
+        currentAnalyticsTab: 'live-sessions',
 
         // Notification settings
         notifyAllLive: false,
@@ -107,6 +108,9 @@ TikTokRecorderApp.prototype.loadPreferences = function() {
             if (!allowedUserSorts.includes(preferences.usersSortBy)) preferences.usersSortBy = defaults.usersSortBy;
             if (!['asc', 'desc'].includes(preferences.usersSortOrder)) preferences.usersSortOrder = defaults.usersSortOrder;
             if (!allowedAnalyticsViews.includes(preferences.analyticsView)) preferences.analyticsView = defaults.analyticsView;
+            if (!['live-sessions', 'new-users'].includes(preferences.currentAnalyticsTab)) {
+                preferences.currentAnalyticsTab = defaults.currentAnalyticsTab;
+            }
             if (!Number.isInteger(preferences.usersPerPage) || preferences.usersPerPage < 1 || preferences.usersPerPage > 100) {
                 preferences.usersPerPage = defaults.usersPerPage;
             }
