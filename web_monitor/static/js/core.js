@@ -25,7 +25,7 @@ class TikTokRecorderApp {
         // Analytics properties
         this.analyticsChart = null;
         this.newUsersChart = null;
-        this.analyticsView = '30d';
+        this.analyticsView = 'month';
         const analyticsNow = new Date();
         const analyticsYear = analyticsNow.getFullYear();
         const analyticsMonth = String(analyticsNow.getMonth() + 1).padStart(2, '0');
@@ -38,7 +38,7 @@ class TikTokRecorderApp {
 
         // User preferences
         this.preferences = this.loadPreferences();
-        this.analyticsView = this.preferences.analyticsView || '30d';
+        this.analyticsView = this.preferences.analyticsView || 'month';
         this.currentAnalyticsTab = this.preferences.currentAnalyticsTab || 'live-sessions';
 
         // Local browser notifications while the dashboard is open
