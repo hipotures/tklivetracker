@@ -173,7 +173,7 @@ TikTokRecorderApp.prototype.applyPreferences = function() {
 
     // Apply analytics preferences
     if (this.currentPage === 'analytics') {
-        this.analyticsView = this.preferences.analyticsView || '30d';
+        this.analyticsView = this.preferences.analyticsView || 'month';
         const analyticsView = document.getElementById('analytics-view');
         if (analyticsView) analyticsView.value = this.analyticsView;
     }
