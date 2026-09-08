@@ -62,7 +62,7 @@ TikTokRecorderApp.prototype.loadPreferences = function() {
         statsSortOrder: 'asc',
 
         // Analytics page
-        analyticsView: '30d',
+        analyticsView: 'month',
         currentAnalyticsTab: 'live-sessions',
 
         // Notification settings
@@ -92,15 +92,21 @@ TikTokRecorderApp.prototype.loadPreferences = function() {
             const legacyAnalyticsViews = {
                 hourly: 'day',
                 last24h: 'day',
-                last7d: '7d',
-                daily: '30d',
-                last30d: '30d',
-                weekly: '3m',
-                last365d: '12m'
+                '7d': 'week',
+                last7d: 'week',
+                daily: 'month',
+                '30d': 'month',
+                last30d: 'month',
+                weekly: 'quarter',
+                '3m': 'quarter',
+                '12m': 'year',
+                last365d: 'year'
             };
             preferences.analyticsView =
                 legacyAnalyticsViews[preferences.analyticsView] || preferences.analyticsView;
-            const allowedAnalyticsViews = ['day', '7d', '30d', '3m', '12m'];
+            const allowedAnalyticsViews = [
+                'day', 'week', 'month', 'quarter', 'year', 'all'
+            ];
 
             if (!allowedPages.includes(preferences.currentPage)) preferences.currentPage = defaults.currentPage;
             if (!allowedLiveFilters.includes(preferences.usersLiveFilter)) preferences.usersLiveFilter = defaults.usersLiveFilter;
