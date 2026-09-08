@@ -146,6 +146,21 @@ uv sync --frozen --extra telegram-upload
 Supervisor Telegram alerts do not require this extra. See
 [Configuration](docs/configuration.md#telegram).
 
+## Analytics periods
+
+The Analytics page uses calendar-aligned periods rather than rolling windows:
+
+- **Day**: midnight through the end of the selected calendar day, grouped by hour.
+- **Week**: Monday through Sunday, grouped by day.
+- **Month**: the complete calendar month, grouped by day.
+- **Quarter**: Q1, Q2, Q3, or Q4, grouped by week.
+- **Year**: January through December, grouped by month.
+- **All**: the complete stored history, grouped by month.
+
+For the current period, future buckets remain unobserved rather than being counted as
+zero. Previous and Next move by complete adjacent calendar periods; All has no period
+navigation.
+
 <!-- BEGIN GENERATED PUBLIC SCREENSHOTS -->
 ## Screenshots
 
