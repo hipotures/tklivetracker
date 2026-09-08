@@ -25,8 +25,12 @@ class TikTokRecorderApp {
         // Analytics properties
         this.analyticsChart = null;
         this.newUsersChart = null;
-        this.analyticsView = 'daily';
-        this.analyticsDate = new Date().toISOString().split('T')[0];
+        this.analyticsView = '30d';
+        const analyticsNow = new Date();
+        const analyticsYear = analyticsNow.getFullYear();
+        const analyticsMonth = String(analyticsNow.getMonth() + 1).padStart(2, '0');
+        const analyticsDay = String(analyticsNow.getDate()).padStart(2, '0');
+        this.analyticsDate = `${analyticsYear}-${analyticsMonth}-${analyticsDay}`;
         this.currentAnalyticsTab = 'live-sessions';
 
         // Theme properties
