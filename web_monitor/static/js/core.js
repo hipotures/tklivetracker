@@ -38,6 +38,7 @@ class TikTokRecorderApp {
 
         // User preferences
         this.preferences = this.loadPreferences();
+        this.analyticsView = this.preferences.analyticsView || '30d';
         this.currentAnalyticsTab = this.preferences.currentAnalyticsTab || 'live-sessions';
 
         // Local browser notifications while the dashboard is open
