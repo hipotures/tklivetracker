@@ -120,6 +120,7 @@ def _bucket_definitions(view, start, end, now):
                     "time_period": cursor.strftime("%Y-%m-%d %H:00:00"),
                     "display_label": cursor.strftime("%H:00"),
                     "bucket_start": cursor,
+                    "bucket_end": cursor + timedelta(hours=1),
                 }
             )
             cursor += timedelta(hours=1)
@@ -132,6 +133,7 @@ def _bucket_definitions(view, start, end, now):
                     "time_period": cursor.strftime("%Y-%m-%d"),
                     "display_label": cursor.strftime("%b %d"),
                     "bucket_start": cursor,
+                    "bucket_end": cursor + timedelta(days=1),
                 }
             )
             cursor += timedelta(days=1)
@@ -144,6 +146,7 @@ def _bucket_definitions(view, start, end, now):
                     "time_period": cursor.strftime("%Y-%m-%d"),
                     "display_label": f"Week {cursor.strftime('%b %d')}",
                     "bucket_start": cursor,
+                    "bucket_end": cursor + timedelta(days=7),
                 }
             )
             cursor += timedelta(days=7)
@@ -156,13 +159,23 @@ def _bucket_definitions(view, start, end, now):
                     "time_period": cursor.strftime("%Y-%m"),
                     "display_label": cursor.strftime("%b %Y"),
                     "bucket_start": cursor,
+                    "bucket_end": _shift_months(cursor, 1),
                 }
             )
             cursor = _shift_months(cursor, 1)
 
     for bucket in buckets:
         bucket["is_future"] = bucket["bucket_start"] > now
+        bucket["is_partial"] = (
+            not bucket["is_future"]
+            and (
+                bucket["bucket_start"] < start
+                or bucket["bucket_end"] > end
+                or bucket["bucket_start"] <= now < bucket["bucket_end"]
+            )
+        )
         bucket.pop("bucket_start")
+        bucket.pop("bucket_end")
     return buckets
 
 
@@ -228,8 +241,9 @@ def _navigation(view, base_date, start, end, now, db, table, timestamp_column):
 def _summary_from_series(data, value_key, aggregation_label):
     """Calculate summary values from observed buckets only."""
     observed = [item for item in data if item[value_key] is not None]
-    total = sum(item[value_key] for item in observed)
-    average = total / len(observed) if observed else 0
+    completed = [item for item in observed if not item.get("is_partial")]
+    completed_total = sum(item[value_key] for item in completed)
+    average = completed_total / len(completed) if completed else 0
 
     peak = None
     positive = [item for item in observed if item[value_key] > 0]
@@ -242,6 +256,7 @@ def _summary_from_series(data, value_key, aggregation_label):
 
     return {
         "observed_periods": len(observed),
+        "average_periods": len(completed),
         "average_per_period": round(average, 1),
         "aggregation_label": aggregation_label,
         "peak": peak,
