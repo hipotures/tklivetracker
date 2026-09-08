@@ -62,6 +62,8 @@ TikTokRecorderApp.prototype.loadAnalytics = async function() {
         this.analyticsView = response.view_type;
         this.analyticsDate = response.date;
         this.analyticsNavigation = response.navigation;
+        const analyticsView = document.getElementById('analytics-view');
+        if (analyticsView) analyticsView.value = this.analyticsView;
         this.updateAnalyticsSummary(response);
         this.updateAnalyticsChart(response);
         this.updateAnalyticsDateDisplay(response);
@@ -297,6 +299,8 @@ TikTokRecorderApp.prototype.loadNewUsersAnalytics = async function() {
         this.analyticsView = response.view_type;
         this.analyticsDate = response.date;
         this.analyticsNavigation = response.navigation;
+        const analyticsView = document.getElementById('analytics-view');
+        if (analyticsView) analyticsView.value = this.analyticsView;
         this.updateNewUsersChart(response);
         this.updateAnalyticsDateDisplay(response);
         this.updateAnalyticsNavigation(response);
