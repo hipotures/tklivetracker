@@ -68,7 +68,24 @@ def _client_for(database: Path, monkeypatch):
     return app.test_client()
 
 
-def test_daily_live_analytics_counts_distinct_users_across_the_whole_period(
+def test_period_registry_defines_calendar_views() -> None:
+    assert list(analytics_module.PERIODS) == [
+        "day",
+        "week",
+        "month",
+        "quarter",
+        "year",
+        "all",
+    ]
+    assert analytics_module.PERIODS["day"]["aggregation"] == "hour"
+    assert analytics_module.PERIODS["week"]["aggregation"] == "day"
+    assert analytics_module.PERIODS["month"]["aggregation"] == "day"
+    assert analytics_module.PERIODS["quarter"]["aggregation"] == "week"
+    assert analytics_module.PERIODS["year"]["aggregation"] == "month"
+    assert analytics_module.PERIODS["all"]["aggregation"] == "month"
+
+
+def test_day_counts_distinct_users_across_the_whole_period(
     tmp_path, monkeypatch
 ) -> None:
     database = tmp_path / "analytics.db"
@@ -93,13 +110,15 @@ def test_daily_live_analytics_counts_distinct_users_across_the_whole_period(
     payload = response.get_json()
 
     assert response.status_code == 200
+    assert payload["period"]["start"] == "2026-09-08"
+    assert payload["period"]["end"] == "2026-09-08"
     assert payload["totals"]["total_live_sessions"] == 5
     assert payload["totals"]["total_unique_users"] == 3
     assert payload["data"][0]["unique_users"] == 2
     assert payload["data"][1]["unique_users"] == 2
 
 
-def test_current_day_future_hours_are_not_presented_as_zero(
+def test_current_day_keeps_full_24_hour_axis_and_marks_future_hours_unknown(
     tmp_path, monkeypatch
 ) -> None:
     database = tmp_path / "future-hours.db"
@@ -115,151 +134,221 @@ def test_current_day_future_hours_are_not_presented_as_zero(
     ).get_json()
 
     assert len(payload["data"]) == 24
+    assert payload["data"][10]["time_period"] == "2026-09-08 10:00:00"
     assert payload["data"][10]["live_count"] == 0
     assert payload["data"][10]["is_future"] is False
     assert payload["data"][10]["is_partial"] is True
     assert payload["data"][11]["live_count"] is None
     assert payload["data"][11]["unique_users"] is None
     assert payload["data"][11]["is_future"] is True
+    assert payload["data"][-1]["display_label"] == "23:00"
     assert payload["summary"]["observed_periods"] == 11
     assert payload["summary"]["average_periods"] == 10
     assert payload["summary"]["average_per_period"] == 0.1
 
 
-def test_recent_day_ranges_include_the_selected_current_day(
+def test_week_is_monday_through_sunday_and_moves_by_whole_weeks(
     tmp_path, monkeypatch
 ) -> None:
-    database = tmp_path / "recent.db"
+    database = tmp_path / "week.db"
     _create_analytics_database(
         database,
         users=[
-            (1, "alice", "2026-09-02 08:00:00"),
+            (1, "alice", "2026-09-07 08:00:00"),
             (2, "bob", "2026-09-08 09:00:00"),
         ],
         lives=[
-            (1, 1, "2026-09-02 08:30:00"),
+            (1, 1, "2026-09-07 08:30:00"),
             (2, 2, "2026-09-08 09:30:00"),
+            (3, 1, "2026-08-31 08:30:00"),
         ],
     )
     client = _client_for(database, monkeypatch)
 
-    live_7d = client.get(
-        "/api/analytics/live-activity?view=7d&date=2026-09-08"
-    ).get_json()
-    live_30d = client.get(
-        "/api/analytics/live-activity?view=30d&date=2026-09-08"
-    ).get_json()
-    users_7d = client.get(
-        "/api/analytics/new-users?view=7d&date=2026-09-08"
+    payload = client.get(
+        "/api/analytics/live-activity?view=week&date=2026-09-08"
     ).get_json()
 
-    assert len(live_7d["data"]) == 7
-    assert live_7d["data"][-1]["time_period"] == "2026-09-08"
-    assert live_7d["data"][-1]["live_count"] == 1
-    assert live_30d["data"][-1]["time_period"] == "2026-09-08"
-    assert live_30d["data"][-1]["live_count"] == 1
-    assert users_7d["data"][-1]["new_users_count"] == 1
+    assert payload["date"] == "2026-09-07"
+    assert payload["period"]["start"] == "2026-09-07"
+    assert payload["period"]["end"] == "2026-09-13"
+    assert payload["period"]["range_label"] == "Sep 7 - Sep 13, 2026"
+    assert len(payload["data"]) == 7
+    assert payload["data"][0]["time_period"] == "2026-09-07"
+    assert payload["data"][-1]["time_period"] == "2026-09-13"
+    assert payload["data"][2]["live_count"] is None
+    assert payload["navigation"]["prev"] == "2026-08-31"
+    assert payload["navigation"]["next"] == "2026-09-14"
+    assert payload["navigation"]["has_prev"] is True
+    assert payload["navigation"]["has_next"] is False
 
 
-def test_three_month_view_has_continuous_monday_week_buckets(
+def test_month_is_complete_calendar_month_with_future_days_unknown(
     tmp_path, monkeypatch
 ) -> None:
-    database = tmp_path / "weekly.db"
+    database = tmp_path / "month.db"
+    _create_analytics_database(
+        database,
+        users=[(1, "alice", "2026-09-01 08:00:00")],
+        lives=[
+            (1, 1, "2026-09-01 08:30:00"),
+            (2, 1, "2026-08-31 08:30:00"),
+        ],
+    )
+    client = _client_for(database, monkeypatch)
+
+    payload = client.get(
+        "/api/analytics/live-activity?view=month&date=2026-09-08"
+    ).get_json()
+
+    assert payload["date"] == "2026-09-01"
+    assert payload["period"]["range_label"] == "September 2026"
+    assert payload["period"]["start"] == "2026-09-01"
+    assert payload["period"]["end"] == "2026-09-30"
+    assert len(payload["data"]) == 30
+    assert payload["data"][7]["time_period"] == "2026-09-08"
+    assert payload["data"][8]["time_period"] == "2026-09-09"
+    assert payload["data"][8]["live_count"] is None
+    assert payload["navigation"]["prev"] == "2026-08-01"
+    assert payload["navigation"]["next"] == "2026-10-01"
+    assert payload["navigation"]["has_prev"] is True
+    assert payload["navigation"]["has_next"] is False
+
+
+def test_quarter_uses_q_boundaries_and_week_buckets_cover_full_quarter(
+    tmp_path, monkeypatch
+) -> None:
+    database = tmp_path / "quarter.db"
     _create_analytics_database(
         database,
         users=[(1, "alice", "2026-07-01 08:00:00")],
         lives=[
             (1, 1, "2026-07-01 08:30:00"),
             (2, 1, "2026-07-20 08:30:00"),
+            (3, 1, "2026-06-20 08:30:00"),
         ],
     )
     client = _client_for(database, monkeypatch)
 
     payload = client.get(
-        "/api/analytics/live-activity?view=3m&date=2026-09-08"
+        "/api/analytics/live-activity?view=quarter&date=2026-09-08"
     ).get_json()
 
-    assert payload["view_type"] == "3m"
-    assert len(payload["data"]) >= 13
-    assert any(item["live_count"] == 0 for item in payload["data"] if not item["is_future"])
-    for item in payload["data"]:
-        bucket_date = datetime.strptime(item["time_period"], "%Y-%m-%d")
-        assert bucket_date.weekday() == 0
-        assert item["display_label"].startswith("Week ")
+    assert payload["date"] == "2026-07-01"
+    assert payload["period"]["start"] == "2026-07-01"
+    assert payload["period"]["end"] == "2026-09-30"
+    assert payload["period"]["range_label"] == "Q3 2026 · Jul 1 - Sep 30, 2026"
+    assert payload["data"][0]["time_period"] == "2026-06-29"
+    assert payload["data"][0]["display_label"] == "Jul 1–Jul 5"
+    assert payload["data"][-1]["time_period"] == "2026-09-28"
+    assert payload["data"][-1]["display_label"] == "Sep 28–Sep 30"
+    assert payload["data"][-1]["live_count"] is None
+    assert payload["navigation"]["prev"] == "2026-04-01"
+    assert payload["navigation"]["next"] == "2026-10-01"
+    assert payload["navigation"]["has_next"] is False
 
 
-def test_twelve_month_view_uses_monthly_buckets_instead_of_365_daily_points(
+def test_year_is_january_through_december_with_month_buckets(
     tmp_path, monkeypatch
 ) -> None:
     database = tmp_path / "year.db"
     _create_analytics_database(
         database,
         users=[
-            (1, "alice", "2025-10-10 08:00:00"),
+            (1, "alice", "2026-01-10 08:00:00"),
             (2, "bob", "2026-09-08 09:00:00"),
         ],
         lives=[
-            (1, 1, "2025-10-10 08:30:00"),
+            (1, 1, "2026-01-10 08:30:00"),
             (2, 2, "2026-09-08 09:30:00"),
+            (3, 1, "2025-12-10 08:30:00"),
         ],
     )
     client = _client_for(database, monkeypatch)
 
     live = client.get(
-        "/api/analytics/live-activity?view=12m&date=2026-09-08"
+        "/api/analytics/live-activity?view=year&date=2026-09-08"
     ).get_json()
     users = client.get(
-        "/api/analytics/new-users?view=12m&date=2026-09-08"
+        "/api/analytics/new-users?view=year&date=2026-09-08"
     ).get_json()
 
+    assert live["date"] == "2026-01-01"
+    assert live["period"]["start"] == "2026-01-01"
+    assert live["period"]["end"] == "2026-12-31"
+    assert live["period"]["range_label"] == "2026"
     assert len(live["data"]) == 12
     assert len(users["data"]) == 12
-    assert live["period"]["aggregation"] == "month"
-    assert users["period"]["aggregation"] == "month"
-    assert live["totals"]["total_live_sessions"] == 2
-    assert users["totals"]["total_new_users"] == 2
+    assert live["data"][8]["time_period"] == "2026-09"
+    assert live["data"][9]["time_period"] == "2026-10"
+    assert live["data"][9]["live_count"] is None
+    assert live["navigation"]["prev"] == "2025-01-01"
+    assert live["navigation"]["next"] == "2027-01-01"
+    assert live["navigation"]["has_prev"] is True
+    assert live["navigation"]["has_next"] is False
 
 
-def test_legacy_last_year_view_maps_to_current_twelve_month_period(
+def test_all_uses_shared_history_start_and_disables_navigation(
     tmp_path, monkeypatch
 ) -> None:
+    database = tmp_path / "all.db"
+    _create_analytics_database(
+        database,
+        users=[
+            (1, "alice", "2025-06-15 08:00:00"),
+            (2, "bob", "2026-09-08 09:00:00"),
+        ],
+        lives=[
+            (1, 1, "2025-07-10 08:30:00"),
+            (2, 2, "2026-09-08 09:30:00"),
+        ],
+    )
+    client = _client_for(database, monkeypatch)
+
+    live = client.get("/api/analytics/live-activity?view=all").get_json()
+    users = client.get("/api/analytics/new-users?view=all").get_json()
+
+    assert live["date"] is None
+    assert users["date"] is None
+    assert live["period"]["start"] == "2025-06-01"
+    assert users["period"]["start"] == "2025-06-01"
+    assert live["period"]["end"] == "2026-09-08"
+    assert live["period"]["range_label"] == (
+        "All time · Jun 1, 2025 - Sep 8, 2026"
+    )
+    assert live["period"]["aggregation"] == "month"
+    assert len(live["data"]) == 16
+    assert len(users["data"]) == 16
+    assert live["navigation"] == {
+        "current": None,
+        "has_next": False,
+        "has_prev": False,
+        "next": None,
+        "prev": None,
+    }
+    assert users["navigation"] == live["navigation"]
+
+
+def test_legacy_views_map_to_calendar_periods(tmp_path, monkeypatch) -> None:
     database = tmp_path / "legacy.db"
     _create_analytics_database(database)
     client = _client_for(database, monkeypatch)
 
-    payload = client.get(
-        "/api/analytics/live-activity?view=last365d&date=2026-09-08"
-    ).get_json()
-
-    assert payload["view_type"] == "12m"
-    assert len(payload["data"]) == 12
-
-
-def test_three_month_navigation_normalizes_to_month_boundaries(
-    tmp_path, monkeypatch
-) -> None:
-    database = tmp_path / "navigation.db"
-    _create_analytics_database(
-        database,
-        users=[(1, "alice", "2026-01-01 08:00:00")],
-        lives=[(1, 1, "2026-01-01 08:30:00")],
-    )
-    client = _client_for(database, monkeypatch)
-
-    for endpoint in ["live-activity", "new-users"]:
-        response = client.get(
-            f"/api/analytics/{endpoint}?view=3m&date=2026-08-31"
-        )
-        payload = response.get_json()
-
-        assert response.status_code == 200
-        assert payload["date"] == "2026-08-01"
-        assert payload["navigation"]["prev"] == "2026-05-01"
-        assert payload["navigation"]["next"] == "2026-11-01"
-        assert payload["navigation"]["has_next"] is True
+    aliases = {
+        "last24h": "day",
+        "last7d": "week",
+        "last30d": "month",
+        "3m": "quarter",
+        "last365d": "year",
+    }
+    for legacy, expected in aliases.items():
+        payload = client.get(
+            f"/api/analytics/live-activity?view={legacy}&date=2026-09-08"
+        ).get_json()
+        assert payload["view_type"] == expected
 
 
-def test_analytics_frontend_uses_period_model_and_discrete_charts() -> None:
+def test_analytics_frontend_uses_calendar_period_selector() -> None:
     project_root = Path(__file__).resolve().parent.parent
     template = (
         project_root / "web_monitor" / "templates" / "pages" / "analytics.html"
@@ -271,16 +360,25 @@ def test_analytics_frontend_uses_period_model_and_discrete_charts() -> None:
         project_root / "web_monitor" / "static" / "js" / "analytics.js"
     ).read_text(encoding="utf-8")
 
-    for value in ["day", "7d", "30d", "3m", "12m"]:
+    for value, label in [
+        ("day", "Day"),
+        ("week", "Week"),
+        ("month", "Month"),
+        ("quarter", "Quarter"),
+        ("year", "Year"),
+        ("all", "All"),
+    ]:
         assert f'<option value="{value}"' in template
+        assert f">{label}</option>" in template
 
-    assert "Last 24h" not in template
-    assert "Last 30d" not in template
-    assert "Last 1y" not in template
-    assert "Live Starts" in template
-    assert "Tracked Users Added" in template
-    assert "Distinct Users" in template
-    assert "const allowedAnalyticsViews = ['day', '7d', '30d', '3m', '12m'];" in preferences
+    assert "7 days" not in template
+    assert "30 days" not in template
+    assert "3 months" not in template
+    assert "12 months" not in template
+    assert "const allowedAnalyticsViews = [" in preferences
+    for value in ["day", "week", "month", "quarter", "year", "all"]:
+        assert f"'{value}'" in preferences
+
     assert "type: 'bar'" in analytics
     assert "fill: false" in analytics
     assert "tension: 0.15" in analytics
