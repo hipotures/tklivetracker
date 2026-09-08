@@ -250,6 +250,7 @@ def _summary_from_series(data, value_key, aggregation_label):
 
 def _live_activity_payload(db, view, base_date, now):
     start, end = _period_bounds(view, base_date)
+    query_end = min(end, now)
     aggregation, aggregation_label = VIEW_AGGREGATIONS[view]
     group_expression = _group_expression("started_at", aggregation)
     buckets = _bucket_definitions(view, start, end, now)
@@ -268,7 +269,7 @@ def _live_activity_payload(db, view, base_date, now):
         """,
         (
             start.strftime("%Y-%m-%d %H:%M:%S"),
-            end.strftime("%Y-%m-%d %H:%M:%S"),
+            query_end.strftime("%Y-%m-%d %H:%M:%S"),
         ),
     ).fetchall()
 
@@ -295,7 +296,7 @@ def _live_activity_payload(db, view, base_date, now):
         """,
         (
             start.strftime("%Y-%m-%d %H:%M:%S"),
-            end.strftime("%Y-%m-%d %H:%M:%S"),
+            query_end.strftime("%Y-%m-%d %H:%M:%S"),
         ),
     ).fetchone()
 
@@ -327,6 +328,7 @@ def _live_activity_payload(db, view, base_date, now):
 
 def _new_users_payload(db, view, base_date, now):
     start, end = _period_bounds(view, base_date)
+    query_end = min(end, now)
     aggregation, aggregation_label = VIEW_AGGREGATIONS[view]
     group_expression = _group_expression("added_at", aggregation)
     buckets = _bucket_definitions(view, start, end, now)
@@ -344,7 +346,7 @@ def _new_users_payload(db, view, base_date, now):
         """,
         (
             start.strftime("%Y-%m-%d %H:%M:%S"),
-            end.strftime("%Y-%m-%d %H:%M:%S"),
+            query_end.strftime("%Y-%m-%d %H:%M:%S"),
         ),
     ).fetchall()
 
@@ -367,7 +369,7 @@ def _new_users_payload(db, view, base_date, now):
         """,
         (
             start.strftime("%Y-%m-%d %H:%M:%S"),
-            end.strftime("%Y-%m-%d %H:%M:%S"),
+            query_end.strftime("%Y-%m-%d %H:%M:%S"),
         ),
     ).fetchone()["total_new_users"]
 
