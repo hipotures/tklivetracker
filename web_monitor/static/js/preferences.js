@@ -62,7 +62,8 @@ TikTokRecorderApp.prototype.loadPreferences = function() {
         statsSortOrder: 'asc',
 
         // Analytics page
-        analyticsView: 'daily',
+        analyticsView: 'month',
+        currentAnalyticsTab: 'live-sessions',
 
         // Notification settings
         notifyAllLive: false,
@@ -88,9 +89,23 @@ TikTokRecorderApp.prototype.loadPreferences = function() {
                 'username', 'live', 'active', 'total_lives'
             ];
             if (this.legacySchedulerStatsEnabled) allowedUserSorts.push('interval', 'next_check');
+            const legacyAnalyticsViews = {
+                hourly: 'day',
+                last24h: 'day',
+                '7d': 'week',
+                last7d: 'week',
+                daily: 'month',
+                '30d': 'month',
+                last30d: 'month',
+                weekly: 'quarter',
+                '3m': 'quarter',
+                '12m': 'year',
+                last365d: 'year'
+            };
+            preferences.analyticsView =
+                legacyAnalyticsViews[preferences.analyticsView] || preferences.analyticsView;
             const allowedAnalyticsViews = [
-                'hourly', 'daily', 'weekly', 'last24h', 'last7d', 'last30d',
-                'last365d'
+                'day', 'week', 'month', 'quarter', 'year', 'all'
             ];
 
             if (!allowedPages.includes(preferences.currentPage)) preferences.currentPage = defaults.currentPage;
@@ -99,6 +114,9 @@ TikTokRecorderApp.prototype.loadPreferences = function() {
             if (!allowedUserSorts.includes(preferences.usersSortBy)) preferences.usersSortBy = defaults.usersSortBy;
             if (!['asc', 'desc'].includes(preferences.usersSortOrder)) preferences.usersSortOrder = defaults.usersSortOrder;
             if (!allowedAnalyticsViews.includes(preferences.analyticsView)) preferences.analyticsView = defaults.analyticsView;
+            if (!['live-sessions', 'new-users'].includes(preferences.currentAnalyticsTab)) {
+                preferences.currentAnalyticsTab = defaults.currentAnalyticsTab;
+            }
             if (!Number.isInteger(preferences.usersPerPage) || preferences.usersPerPage < 1 || preferences.usersPerPage > 100) {
                 preferences.usersPerPage = defaults.usersPerPage;
             }
@@ -155,7 +173,7 @@ TikTokRecorderApp.prototype.applyPreferences = function() {
 
     // Apply analytics preferences
     if (this.currentPage === 'analytics') {
-        this.analyticsView = this.preferences.analyticsView || 'daily';
+        this.analyticsView = this.preferences.analyticsView || 'month';
         const analyticsView = document.getElementById('analytics-view');
         if (analyticsView) analyticsView.value = this.analyticsView;
     }

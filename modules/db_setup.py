@@ -174,6 +174,8 @@ def initialize_db(conn):
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_users_is_active ON users(is_active)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_users_is_favorite ON users(is_favorite)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_lives_user_id ON lives(user_id)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_lives_started_at ON lives(started_at)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_users_added_at ON users(added_at)")
     cursor.execute(
         "CREATE INDEX IF NOT EXISTS idx_lives_tiktok_owner_user_id "
         "ON lives(tiktok_owner_user_id)"

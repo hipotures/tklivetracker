@@ -25,8 +25,12 @@ class TikTokRecorderApp {
         // Analytics properties
         this.analyticsChart = null;
         this.newUsersChart = null;
-        this.analyticsView = 'daily';
-        this.analyticsDate = new Date().toISOString().split('T')[0];
+        this.analyticsView = 'month';
+        const analyticsNow = new Date();
+        const analyticsYear = analyticsNow.getFullYear();
+        const analyticsMonth = String(analyticsNow.getMonth() + 1).padStart(2, '0');
+        const analyticsDay = String(analyticsNow.getDate()).padStart(2, '0');
+        this.analyticsDate = `${analyticsYear}-${analyticsMonth}-${analyticsDay}`;
         this.currentAnalyticsTab = 'live-sessions';
 
         // Theme properties
@@ -34,6 +38,8 @@ class TikTokRecorderApp {
 
         // User preferences
         this.preferences = this.loadPreferences();
+        this.analyticsView = this.preferences.analyticsView || 'month';
+        this.currentAnalyticsTab = this.preferences.currentAnalyticsTab || 'live-sessions';
 
         // Local browser notifications while the dashboard is open
         this.browserNotificationState = {
@@ -399,7 +405,7 @@ class TikTokRecorderApp {
                 this.loadAdminPage();
                 break;
             case 'analytics':
-                this.loadAnalytics();
+                this.switchAnalyticsTab(this.currentAnalyticsTab);
                 break;
         }
     }
