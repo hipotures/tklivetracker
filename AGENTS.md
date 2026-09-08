@@ -1,5 +1,7 @@
 # AGENTS.md
 
+Use the fff MCP tools for all file search operations instead of default tools.
+
 Guidance for coding agents and developers working in this repository.
 
 ## Safety boundaries
