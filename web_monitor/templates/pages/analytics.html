@@ -3,22 +3,20 @@
                     <div class="page-header">
                         <div>
                             <h2>Live Activity Analytics</h2>
-                            <p class="page-subtitle">Historical live recording and user growth trends</p>
+                            <p class="page-subtitle">Live start activity and tracker growth over time</p>
                         </div>
                     </div>
 
                     <!-- Analytics Controls -->
                     <div class="analytics-controls-simple">
                         <div class="analytics-view-group">
-                            <label class="analytics-label" for="analytics-view">View:</label>
+                            <label class="analytics-label" for="analytics-view">Period:</label>
                             <select id="analytics-view" class="analytics-select">
-                                <option value="hourly">Hourly (24 hours)</option>
-                                <option value="daily" selected>Daily (30 days)</option>
-                                <option value="weekly">Weekly (Quarter)</option>
-                                <option value="last24h">Last 24h</option>
-                                <option value="last7d">Last 7d</option>
-                                <option value="last30d">Last 30d</option>
-                                <option value="last365d">Last 1y</option>
+                                <option value="day">1 day</option>
+                                <option value="7d">7 days</option>
+                                <option value="30d" selected>30 days</option>
+                                <option value="3m">3 months</option>
+                                <option value="12m">12 months</option>
                             </select>
                         </div>
                         <div class="analytics-nav-group">
@@ -39,66 +37,62 @@
 
                     <!-- Analytics Tabs -->
                     <div class="analytics-tabs" role="tablist" aria-label="Analytics data">
-                        <button id="live-sessions-tab-button" class="analytics-tab active" data-tab="live-sessions" type="button" role="tab" aria-selected="true" aria-controls="live-sessions-tab">Live Sessions</button>
-                        <button id="new-users-tab-button" class="analytics-tab" data-tab="new-users" type="button" role="tab" aria-selected="false" aria-controls="new-users-tab">New Users</button>
+                        <button id="live-sessions-tab-button" class="analytics-tab active" data-tab="live-sessions" type="button" role="tab" aria-selected="true" aria-controls="live-sessions-tab">Live Starts</button>
+                        <button id="new-users-tab-button" class="analytics-tab" data-tab="new-users" type="button" role="tab" aria-selected="false" aria-controls="new-users-tab">Tracked Users Added</button>
                     </div>
 
-                    <!-- Live Sessions Tab Content -->
+                    <!-- Live Starts Tab Content -->
                     <div id="live-sessions-tab" class="analytics-tab-content active" role="tabpanel" aria-labelledby="live-sessions-tab-button">
-                        <!-- Analytics Summary -->
                         <div class="analytics-summary">
                             <div class="stat-card">
                                 <div class="stat-value" id="analytics-total-sessions">--</div>
-                                <div class="stat-label">Total Live Sessions</div>
+                                <div class="stat-label">Total Live Starts</div>
                             </div>
                             <div class="stat-card">
                                 <div class="stat-value" id="analytics-unique-users">--</div>
-                                <div class="stat-label">Unique Users</div>
+                                <div class="stat-label">Distinct Users</div>
                             </div>
                             <div class="stat-card">
                                 <div class="stat-value" id="analytics-avg-sessions">--</div>
-                                <div class="stat-label">Avg Sessions/Period</div>
+                                <div class="stat-label" id="analytics-avg-label">Avg Starts/Period</div>
                             </div>
                             <div class="stat-card">
                                 <div class="stat-value" id="analytics-peak-period">--</div>
-                                <div class="stat-label">Peak Period</div>
+                                <div class="stat-label" id="analytics-peak-label">Peak Period</div>
+                                <div class="analytics-stat-note" id="analytics-peak-count"></div>
                             </div>
                         </div>
 
-                        <!-- Analytics Chart -->
                         <div class="analytics-chart-container">
-                            <canvas id="analytics-chart" width="800" height="400" role="img" aria-label="Live sessions and unique users over time">
-                                Live sessions and unique users chart. Summary values are listed above.
+                            <canvas id="analytics-chart" width="800" height="400" role="img" aria-label="Live starts and distinct users over time">
+                                Live starts and distinct users chart. Summary values are listed above.
                             </canvas>
                         </div>
 
-                        <!-- Chart Legend -->
                         <div class="analytics-legend">
                             <div class="legend-item">
-                                <span class="legend-color" style="background-color: #3b82f6;"></span>
-                                <span class="legend-label">Live Sessions</span>
+                                <span class="legend-color legend-color-live-starts"></span>
+                                <span class="legend-label">Live Starts</span>
                             </div>
                             <div class="legend-item">
-                                <span class="legend-color" style="background-color: #10b981;"></span>
-                                <span class="legend-label">Unique Users</span>
+                                <span class="legend-color legend-color-distinct-users"></span>
+                                <span class="legend-label">Distinct Users</span>
                             </div>
                         </div>
                     </div>
 
-                    <!-- New Users Tab Content -->
+                    <!-- Tracked Users Added Tab Content -->
                     <div id="new-users-tab" class="analytics-tab-content" role="tabpanel" aria-labelledby="new-users-tab-button" hidden>
-                        <!-- New Users Chart -->
                         <div class="analytics-chart-container">
-                            <canvas id="new-users-chart" width="800" height="400" role="img" aria-label="New users over time">
-                                New users chart.
+                            <canvas id="new-users-chart" width="800" height="400" role="img" aria-label="Tracked users added over time">
+                                Tracked users added chart.
                             </canvas>
                         </div>
 
-                        <!-- New Users Legend -->
                         <div class="analytics-legend">
                             <div class="legend-item">
-                                <span class="legend-color" style="background-color: #4f9cf9;"></span>
-                                <span class="legend-label">New Users</span>
+                                <span class="legend-color legend-color-tracked-users"></span>
+                                <span class="legend-label">Tracked Users Added</span>
                             </div>
                         </div>
                     </div>
