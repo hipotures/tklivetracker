@@ -117,10 +117,12 @@ def test_current_day_future_hours_are_not_presented_as_zero(
     assert len(payload["data"]) == 24
     assert payload["data"][10]["live_count"] == 0
     assert payload["data"][10]["is_future"] is False
+    assert payload["data"][10]["is_partial"] is True
     assert payload["data"][11]["live_count"] is None
     assert payload["data"][11]["unique_users"] is None
     assert payload["data"][11]["is_future"] is True
     assert payload["summary"]["observed_periods"] == 11
+    assert payload["summary"]["average_periods"] == 10
     assert payload["summary"]["average_per_period"] == 0.1
 
 
