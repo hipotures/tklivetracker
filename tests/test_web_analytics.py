@@ -310,11 +310,11 @@ def test_all_uses_shared_history_start_and_disables_navigation(
 
     assert live["date"] is None
     assert users["date"] is None
-    assert live["period"]["start"] == "2025-06-01"
-    assert users["period"]["start"] == "2025-06-01"
+    assert live["period"]["start"] == "2025-06-15"
+    assert users["period"]["start"] == "2025-06-15"
     assert live["period"]["end"] == "2026-09-08"
     assert live["period"]["range_label"] == (
-        "All time · Jun 1, 2025 - Sep 8, 2026"
+        "All time · Jun 15, 2025 - Sep 8, 2026"
     )
     assert live["period"]["aggregation"] == "month"
     assert len(live["data"]) == 16
