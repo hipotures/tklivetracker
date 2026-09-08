@@ -38,6 +38,7 @@ class TikTokRecorderApp {
 
         // User preferences
         this.preferences = this.loadPreferences();
+        this.currentAnalyticsTab = this.preferences.currentAnalyticsTab || 'live-sessions';
 
         // Local browser notifications while the dashboard is open
         this.browserNotificationState = {
@@ -403,7 +404,7 @@ class TikTokRecorderApp {
                 this.loadAdminPage();
                 break;
             case 'analytics':
-                this.loadAnalytics();
+                this.switchAnalyticsTab(this.currentAnalyticsTab);
                 break;
         }
     }
