@@ -8,24 +8,47 @@ from web_monitor.utils.database import get_db
 analytics_bp = Blueprint("analytics", __name__, url_prefix="/api")
 
 
+PERIODS = {
+    "day": {
+        "aggregation": "hour",
+        "aggregation_label": "Hour",
+    },
+    "week": {
+        "aggregation": "day",
+        "aggregation_label": "Day",
+    },
+    "month": {
+        "aggregation": "day",
+        "aggregation_label": "Day",
+    },
+    "quarter": {
+        "aggregation": "week",
+        "aggregation_label": "Week",
+    },
+    "year": {
+        "aggregation": "month",
+        "aggregation_label": "Month",
+    },
+    "all": {
+        "aggregation": "month",
+        "aggregation_label": "Month",
+    },
+}
+
 VIEW_ALIASES = {
     "hourly": "day",
     "last24h": "day",
-    "last7d": "7d",
-    "daily": "30d",
-    "last30d": "30d",
-    "weekly": "3m",
-    "last365d": "12m",
+    "7d": "week",
+    "last7d": "week",
+    "daily": "month",
+    "30d": "month",
+    "last30d": "month",
+    "weekly": "quarter",
+    "3m": "quarter",
+    "12m": "year",
+    "last365d": "year",
 }
-SUPPORTED_VIEWS = {"day", "7d", "30d", "3m", "12m"}
-
-VIEW_AGGREGATIONS = {
-    "day": ("hour", "Hour"),
-    "7d": ("day", "Day"),
-    "30d": ("day", "Day"),
-    "3m": ("week", "Week"),
-    "12m": ("month", "Month"),
-}
+SUPPORTED_VIEWS = set(PERIODS)
 
 
 def _shift_months(value, months):
@@ -44,46 +67,86 @@ def _shift_months(value, months):
 
 
 def _normalize_view(value):
-    """Map legacy analytics view names to the current period model."""
+    """Map legacy analytics view names to the current calendar-period model."""
     normalized = VIEW_ALIASES.get(value, value)
-    return normalized if normalized in SUPPORTED_VIEWS else "30d"
+    return normalized if normalized in SUPPORTED_VIEWS else "month"
 
 
-def _parse_base_date(value, view, now):
-    """Parse and clamp the requested base date to the local current date."""
+def _parse_base_date(value, now):
+    """Parse and clamp the requested reference date to the local current date."""
     try:
         base_date = datetime.strptime(value, "%Y-%m-%d")
     except (TypeError, ValueError):
         base_date = now.replace(hour=0, minute=0, second=0, microsecond=0)
 
     today = now.replace(hour=0, minute=0, second=0, microsecond=0)
-    if base_date > today:
-        base_date = today
-
-    if view in {"3m", "12m"}:
-        base_date = base_date.replace(day=1)
-    return base_date
+    return min(base_date, today)
 
 
-def _period_bounds(view, base_date):
-    """Return inclusive-start/exclusive-end bounds for an analytics period."""
+def _global_first_timestamp(db, now):
+    """Return the earliest analytics timestamp across live starts and tracked users."""
+    row = db.execute(
+        """
+        SELECT MIN(value) AS first_timestamp
+        FROM (
+            SELECT MIN(started_at) AS value FROM lives
+            UNION ALL
+            SELECT MIN(added_at) AS value FROM users
+        )
+        WHERE value IS NOT NULL
+        """
+    ).fetchone()
+    value = row["first_timestamp"] if row is not None else None
+    if not value:
+        return now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+
+    try:
+        return datetime.fromisoformat(str(value))
+    except ValueError:
+        current_app.logger.warning(
+            "Could not parse earliest analytics timestamp %r; using current month",
+            value,
+        )
+        return now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+
+
+def _period_bounds(view, base_date, now, db):
+    """Return inclusive-start/exclusive-end bounds for a calendar period."""
     if view == "day":
-        start = base_date
+        start = base_date.replace(hour=0, minute=0, second=0, microsecond=0)
         end = start + timedelta(days=1)
-    elif view == "7d":
-        start = base_date - timedelta(days=6)
-        end = base_date + timedelta(days=1)
-    elif view == "30d":
-        start = base_date - timedelta(days=29)
-        end = base_date + timedelta(days=1)
-    elif view == "3m":
-        end_month = base_date.replace(day=1)
-        start = _shift_months(end_month, -2)
-        end = _shift_months(end_month, 1)
-    elif view == "12m":
-        end_month = base_date.replace(day=1)
-        start = _shift_months(end_month, -11)
-        end = _shift_months(end_month, 1)
+    elif view == "week":
+        day = base_date.replace(hour=0, minute=0, second=0, microsecond=0)
+        start = day - timedelta(days=day.weekday())
+        end = start + timedelta(days=7)
+    elif view == "month":
+        start = base_date.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        end = _shift_months(start, 1)
+    elif view == "quarter":
+        quarter_month = ((base_date.month - 1) // 3) * 3 + 1
+        start = base_date.replace(
+            month=quarter_month,
+            day=1,
+            hour=0,
+            minute=0,
+            second=0,
+            microsecond=0,
+        )
+        end = _shift_months(start, 3)
+    elif view == "year":
+        start = base_date.replace(
+            month=1,
+            day=1,
+            hour=0,
+            minute=0,
+            second=0,
+            microsecond=0,
+        )
+        end = start.replace(year=start.year + 1)
+    elif view == "all":
+        first_timestamp = _global_first_timestamp(db, now)
+        start = first_timestamp.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        end = now
     else:
         raise ValueError(f"Unsupported analytics view: {view}")
     return start, end
@@ -106,72 +169,103 @@ def _group_expression(timestamp_column, aggregation):
     raise ValueError(f"Unsupported analytics aggregation: {aggregation}")
 
 
+def _format_short_date(value):
+    return f"{value.strftime('%b')} {value.day}"
+
+
+def _format_date_range(start, end):
+    """Format an inclusive date range without redundant year text."""
+    if start == end:
+        return f"{start.strftime('%b')} {start.day}, {start.year}"
+    if start.year == end.year:
+        return (
+            f"{start.strftime('%b')} {start.day} - "
+            f"{end.strftime('%b')} {end.day}, {end.year}"
+        )
+    return (
+        f"{start.strftime('%b')} {start.day}, {start.year} - "
+        f"{end.strftime('%b')} {end.day}, {end.year}"
+    )
+
+
 def _bucket_definitions(view, start, end, now):
-    """Build a continuous chart timeline, including explicit empty buckets."""
-    aggregation, _ = VIEW_AGGREGATIONS[view]
+    """Build the complete timeline for the selected calendar period."""
+    aggregation = PERIODS[view]["aggregation"]
     buckets = []
 
     if aggregation == "hour":
         cursor = start
         while cursor < end:
+            bucket_end = cursor + timedelta(hours=1)
             buckets.append(
                 {
                     "key": cursor.strftime("%Y-%m-%d %H:00:00"),
                     "time_period": cursor.strftime("%Y-%m-%d %H:00:00"),
                     "display_label": cursor.strftime("%H:00"),
                     "bucket_start": cursor,
-                    "bucket_end": cursor + timedelta(hours=1),
+                    "bucket_end": bucket_end,
                 }
             )
-            cursor += timedelta(hours=1)
+            cursor = bucket_end
     elif aggregation == "day":
         cursor = start
         while cursor < end:
+            bucket_end = cursor + timedelta(days=1)
             buckets.append(
                 {
                     "key": cursor.strftime("%Y-%m-%d"),
                     "time_period": cursor.strftime("%Y-%m-%d"),
-                    "display_label": cursor.strftime("%b %d"),
+                    "display_label": _format_short_date(cursor),
                     "bucket_start": cursor,
-                    "bucket_end": cursor + timedelta(days=1),
+                    "bucket_end": bucket_end,
                 }
             )
-            cursor += timedelta(days=1)
+            cursor = bucket_end
     elif aggregation == "week":
         cursor = start - timedelta(days=start.weekday())
         while cursor < end:
+            bucket_end = cursor + timedelta(days=7)
+            visible_start = max(cursor, start)
+            visible_end = min(bucket_end, end) - timedelta(days=1)
             buckets.append(
                 {
                     "key": cursor.strftime("%Y-%m-%d"),
                     "time_period": cursor.strftime("%Y-%m-%d"),
-                    "display_label": f"Week {cursor.strftime('%b %d')}",
+                    "display_label": (
+                        _format_short_date(visible_start)
+                        if visible_start.date() == visible_end.date()
+                        else f"{_format_short_date(visible_start)}–{_format_short_date(visible_end)}"
+                    ),
                     "bucket_start": cursor,
-                    "bucket_end": cursor + timedelta(days=7),
+                    "bucket_end": bucket_end,
                 }
             )
-            cursor += timedelta(days=7)
+            cursor = bucket_end
     elif aggregation == "month":
         cursor = start.replace(day=1)
         while cursor < end:
+            bucket_end = _shift_months(cursor, 1)
             buckets.append(
                 {
                     "key": cursor.strftime("%Y-%m"),
                     "time_period": cursor.strftime("%Y-%m"),
                     "display_label": cursor.strftime("%b %Y"),
                     "bucket_start": cursor,
-                    "bucket_end": _shift_months(cursor, 1),
+                    "bucket_end": bucket_end,
                 }
             )
-            cursor = _shift_months(cursor, 1)
+            cursor = bucket_end
 
     for bucket in buckets:
-        bucket["is_future"] = bucket["bucket_start"] > now
+        effective_start = max(bucket["bucket_start"], start)
+        effective_end = min(bucket["bucket_end"], end)
+        bucket["is_future"] = effective_start > now
         bucket["is_partial"] = (
             not bucket["is_future"]
             and (
                 bucket["bucket_start"] < start
                 or bucket["bucket_end"] > end
-                or bucket["bucket_start"] <= now < bucket["bucket_end"]
+                or effective_start <= now < effective_end
             )
         )
         bucket.pop("bucket_start")
@@ -179,44 +273,55 @@ def _bucket_definitions(view, start, end, now):
     return buckets
 
 
-def _period_range_label(view, start, end, now):
-    """Create a human-readable range label that never implies future observations."""
-    last_calendar_day = (end - timedelta(seconds=1)).date()
-    visible_end = min(last_calendar_day, now.date())
-
+def _period_label(view, start, end, now):
+    """Return an unambiguous label for the complete selected period."""
     if view == "day":
-        value = start
-        return f"{value.strftime('%A, %B')} {value.day}, {value.year}"
-
-    start_date = start.date()
-    if start_date.year == visible_end.year:
+        return f"{start.strftime('%A, %B')} {start.day}, {start.year}"
+    if view == "week":
+        return _format_date_range(start.date(), (end - timedelta(days=1)).date())
+    if view == "month":
+        return start.strftime("%B %Y")
+    if view == "quarter":
+        quarter = ((start.month - 1) // 3) + 1
         return (
-            f"{start_date.strftime('%b')} {start_date.day} - "
-            f"{visible_end.strftime('%b')} {visible_end.day}, {visible_end.year}"
+            f"Q{quarter} {start.year} · "
+            f"{_format_date_range(start.date(), (end - timedelta(days=1)).date())}"
         )
-    return (
-        f"{start_date.strftime('%b')} {start_date.day}, {start_date.year} - "
-        f"{visible_end.strftime('%b')} {visible_end.day}, {visible_end.year}"
-    )
+    if view == "year":
+        return str(start.year)
+    if view == "all":
+        first = start.date()
+        last = now.date()
+        return f"All time · {_format_date_range(first, last)}"
+    raise ValueError(f"Unsupported analytics view: {view}")
 
 
-def _navigation(view, base_date, start, end, now, db, table, timestamp_column):
-    """Build period navigation without allowing forward navigation into the future."""
+def _navigation(view, start, end, now, db, table, timestamp_column):
+    """Build navigation between complete adjacent calendar periods."""
+    if view == "all":
+        return {
+            "prev": None,
+            "next": None,
+            "current": None,
+            "has_prev": False,
+            "has_next": False,
+        }
+
     if view == "day":
-        previous_date = base_date - timedelta(days=1)
-        next_date = base_date + timedelta(days=1)
-    elif view == "7d":
-        previous_date = base_date - timedelta(days=7)
-        next_date = base_date + timedelta(days=7)
-    elif view == "30d":
-        previous_date = base_date - timedelta(days=30)
-        next_date = base_date + timedelta(days=30)
-    elif view == "3m":
-        previous_date = _shift_months(base_date, -3)
-        next_date = _shift_months(base_date, 3)
-    elif view == "12m":
-        previous_date = _shift_months(base_date, -12)
-        next_date = _shift_months(base_date, 12)
+        previous_date = start - timedelta(days=1)
+        next_date = start + timedelta(days=1)
+    elif view == "week":
+        previous_date = start - timedelta(days=7)
+        next_date = start + timedelta(days=7)
+    elif view == "month":
+        previous_date = _shift_months(start, -1)
+        next_date = _shift_months(start, 1)
+    elif view == "quarter":
+        previous_date = _shift_months(start, -3)
+        next_date = _shift_months(start, 3)
+    elif view == "year":
+        previous_date = start.replace(year=start.year - 1)
+        next_date = start.replace(year=start.year + 1)
     else:
         raise ValueError(f"Unsupported analytics view: {view}")
 
@@ -232,14 +337,14 @@ def _navigation(view, base_date, start, end, now, db, table, timestamp_column):
     return {
         "prev": previous_date.strftime("%Y-%m-%d"),
         "next": next_date.strftime("%Y-%m-%d"),
-        "current": base_date.strftime("%Y-%m-%d"),
+        "current": start.strftime("%Y-%m-%d"),
         "has_prev": has_prev,
         "has_next": has_next,
     }
 
 
 def _summary_from_series(data, value_key, aggregation_label):
-    """Calculate summary values from observed buckets only."""
+    """Calculate summary values from completed chart buckets only."""
     observed = [item for item in data if item[value_key] is not None]
     completed = [item for item in observed if not item.get("is_partial")]
     completed_total = sum(item[value_key] for item in completed)
@@ -263,10 +368,24 @@ def _summary_from_series(data, value_key, aggregation_label):
     }
 
 
+def _period_metadata(view, start, end, now):
+    inclusive_end = now.date() if view == "all" else (end - timedelta(seconds=1)).date()
+    return {
+        "name": view,
+        "aggregation": PERIODS[view]["aggregation"],
+        "aggregation_label": PERIODS[view]["aggregation_label"],
+        "start": start.strftime("%Y-%m-%d"),
+        "end": inclusive_end.strftime("%Y-%m-%d"),
+        "range_label": _period_label(view, start, end, now),
+        "is_current": view == "all" or start <= now < end,
+    }
+
+
 def _live_activity_payload(db, view, base_date, now):
-    start, end = _period_bounds(view, base_date)
+    start, end = _period_bounds(view, base_date, now, db)
     query_end = min(end, now)
-    aggregation, aggregation_label = VIEW_AGGREGATIONS[view]
+    aggregation = PERIODS[view]["aggregation"]
+    aggregation_label = PERIODS[view]["aggregation_label"]
     group_expression = _group_expression("started_at", aggregation)
     buckets = _bucket_definitions(view, start, end, now)
     by_key = {item["key"]: item for item in buckets}
@@ -290,10 +409,10 @@ def _live_activity_payload(db, view, base_date, now):
 
     data = []
     for bucket in buckets:
-        result = by_key[bucket["key"]]
-        result["live_count"] = None if bucket["is_future"] else 0
-        result["unique_users"] = None if bucket["is_future"] else 0
-        data.append(result)
+        item = by_key[bucket["key"]]
+        item["live_count"] = None if bucket["is_future"] else 0
+        item["unique_users"] = None if bucket["is_future"] else 0
+        data.append(item)
 
     for row in results:
         item = by_key.get(row["bucket_key"])
@@ -315,36 +434,29 @@ def _live_activity_payload(db, view, base_date, now):
         ),
     ).fetchone()
 
-    summary = _summary_from_series(data, "live_count", aggregation_label)
     return {
         "success": True,
         "view_type": view,
-        "date": base_date.strftime("%Y-%m-%d"),
+        "date": start.strftime("%Y-%m-%d") if view != "all" else None,
         "data": data,
         "totals": {
             "total_live_sessions": totals["total_live_sessions"],
             "total_unique_users": totals["total_unique_users"],
         },
-        "summary": summary,
-        "period": {
-            "aggregation": aggregation,
-            "aggregation_label": aggregation_label,
-            "start": start.strftime("%Y-%m-%d"),
-            "end": min((end - timedelta(seconds=1)).date(), now.date()).strftime("%Y-%m-%d"),
-            "range_label": _period_range_label(view, start, end, now),
-            "is_current": end > now,
-        },
+        "summary": _summary_from_series(data, "live_count", aggregation_label),
+        "period": _period_metadata(view, start, end, now),
         "navigation": _navigation(
-            view, base_date, start, end, now, db, "lives", "started_at"
+            view, start, end, now, db, "lives", "started_at"
         ),
         "last_updated": now.strftime("%Y-%m-%d %H:%M:%S"),
     }
 
 
 def _new_users_payload(db, view, base_date, now):
-    start, end = _period_bounds(view, base_date)
+    start, end = _period_bounds(view, base_date, now, db)
     query_end = min(end, now)
-    aggregation, aggregation_label = VIEW_AGGREGATIONS[view]
+    aggregation = PERIODS[view]["aggregation"]
+    aggregation_label = PERIODS[view]["aggregation_label"]
     group_expression = _group_expression("added_at", aggregation)
     buckets = _bucket_definitions(view, start, end, now)
     by_key = {item["key"]: item for item in buckets}
@@ -367,9 +479,9 @@ def _new_users_payload(db, view, base_date, now):
 
     data = []
     for bucket in buckets:
-        result = by_key[bucket["key"]]
-        result["new_users_count"] = None if bucket["is_future"] else 0
-        data.append(result)
+        item = by_key[bucket["key"]]
+        item["new_users_count"] = None if bucket["is_future"] else 0
+        data.append(item)
 
     for row in results:
         item = by_key.get(row["bucket_key"])
@@ -391,20 +503,13 @@ def _new_users_payload(db, view, base_date, now):
     return {
         "success": True,
         "view_type": view,
-        "date": base_date.strftime("%Y-%m-%d"),
+        "date": start.strftime("%Y-%m-%d") if view != "all" else None,
         "data": data,
         "totals": {"total_new_users": total_new_users},
         "summary": _summary_from_series(data, "new_users_count", aggregation_label),
-        "period": {
-            "aggregation": aggregation,
-            "aggregation_label": aggregation_label,
-            "start": start.strftime("%Y-%m-%d"),
-            "end": min((end - timedelta(seconds=1)).date(), now.date()).strftime("%Y-%m-%d"),
-            "range_label": _period_range_label(view, start, end, now),
-            "is_current": end > now,
-        },
+        "period": _period_metadata(view, start, end, now),
         "navigation": _navigation(
-            view, base_date, start, end, now, db, "users", "added_at"
+            view, start, end, now, db, "users", "added_at"
         ),
         "last_updated": now.strftime("%Y-%m-%d %H:%M:%S"),
     }
@@ -412,12 +517,12 @@ def _new_users_payload(db, view, base_date, now):
 
 @analytics_bp.route("/analytics/live-activity", methods=["GET"])
 def get_live_activity_analytics():
-    """Return live-start analytics using one consistent period model."""
+    """Return live-start analytics for a complete calendar period."""
     try:
         db = get_db()
         now = datetime.now()
-        view = _normalize_view(request.args.get("view", "30d"))
-        base_date = _parse_base_date(request.args.get("date"), view, now)
+        view = _normalize_view(request.args.get("view", "month"))
+        base_date = _parse_base_date(request.args.get("date"), now)
         return jsonify(_live_activity_payload(db, view, base_date, now))
     except Exception as exc:
         current_app.logger.error(f"Analytics error: {exc}")
@@ -426,12 +531,12 @@ def get_live_activity_analytics():
 
 @analytics_bp.route("/analytics/new-users", methods=["GET"])
 def get_new_users_analytics():
-    """Return tracker-user additions using the same periods as live analytics."""
+    """Return tracked-user additions for the same calendar periods."""
     try:
         db = get_db()
         now = datetime.now()
-        view = _normalize_view(request.args.get("view", "30d"))
-        base_date = _parse_base_date(request.args.get("date"), view, now)
+        view = _normalize_view(request.args.get("view", "month"))
+        base_date = _parse_base_date(request.args.get("date"), now)
         return jsonify(_new_users_payload(db, view, base_date, now))
     except Exception as exc:
         current_app.logger.error(f"New users analytics error: {exc}")
