@@ -144,8 +144,7 @@ def _period_bounds(view, base_date, now, db):
         )
         end = start.replace(year=start.year + 1)
     elif view == "all":
-        first_timestamp = _global_first_timestamp(db, now)
-        start = first_timestamp.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        start = _global_first_timestamp(db, now)
         end = now
     else:
         raise ValueError(f"Unsupported analytics view: {view}")
