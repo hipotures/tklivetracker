@@ -15,6 +15,7 @@ import subprocess
 import sys
 import time
 import uuid
+import psutil
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Set, Tuple
 from datetime import datetime
@@ -30,7 +31,7 @@ from utils.username import normalize_tiktok_username
 from recorder.utils.recording_metadata import validate_metadata_path
 
 from .process_metadata_store import ProcessMetadataStore, ProcessInfo
-from .process_inventory import RecorderProcess, list_recorder_processes
+from .process_inventory import RecorderProcess, list_recorder_processes, parse_recorder_process
 
 
 class ProcessStartResult:
@@ -389,7 +390,13 @@ class LiveProcessManager:
                     error = f"Failed to register process in database: {e}"
 
                 try:
-                    terminated = await self._terminate_process(pid)
+                    terminated = await self._terminate_process(
+                        pid,
+                        expected=RecorderProcess(
+                            pid, username, str(recording_file_path), 0.0,
+                            tuple(process_cmd),
+                        ),
+                    )
                     if terminated:
                         self._cleanup_exact_zero_byte_output(
                             username,
@@ -986,7 +993,9 @@ class LiveProcessManager:
         graceful: bool,
         final_status: str,
     ) -> bool:
-        success = await self._terminate_process(process_info.pid, graceful)
+        success = await self._terminate_process(
+            process_info.pid, graceful, expected=process_info
+        )
         user_logger = UserContextLogger(self.logger, process_info.username)
         if not success:
             self.metadata_store.update_health_status(
@@ -1103,6 +1112,10 @@ class LiveProcessManager:
         if not start_new:
             return stop_success
 
+        if not stop_success:
+            user_logger.error("Replacement aborted: the previous recorder could not be stopped")
+            return False
+
         ignore_no_stream_data_cooldown = False
         if reason == "recorder produced no stream data":
             cooldown_remaining = self._no_stream_data_cooldown_remaining(
@@ -1180,7 +1193,9 @@ class LiveProcessManager:
                     terminated = True
                     if process_info.pid:
                         user_logger.info(f"Terminating process PID={process_info.pid}")
-                        terminated = await self._terminate_process(process_info.pid, graceful=False)
+                        terminated = await self._terminate_process(
+                            process_info.pid, graceful=False, expected=process_info
+                        )
                         if terminated:
                             user_logger.debug(f"Successfully terminated PID={process_info.pid}")
                         else:
@@ -1223,66 +1238,66 @@ class LiveProcessManager:
             user_logger.error(f"Error during user process cleanup: {e}")
             return False
 
-    async def _terminate_process(self, pid: int, graceful: bool = True) -> bool:
-        """
-        Terminate a process by PID, handling zombies appropriately
-
-        Args:
-            pid: Process ID to terminate
-            graceful: Whether to attempt graceful shutdown first
-
-        Returns:
-            True if process was terminated, False otherwise
-        """
+    async def _terminate_process(
+        self, pid: int, graceful: bool = True, *,
+        expected: ProcessInfo | RecorderProcess,
+    ) -> bool:
+        """Signal only the expected recorder, retaining its OS identity across waits."""
+        if not isinstance(pid, int) or isinstance(pid, bool) or pid <= 1 or expected.pid != pid:
+            self.logger.error("Refusing invalid recorder PID: %r", pid)
+            return False
         try:
-            # Check if process exists and handle zombies
-            if not self._process_exists(pid):
-                self.logger.debug(f"Process {pid} does not exist")
+            process = psutil.Process(pid)
+            if process.status() == psutil.STATUS_ZOMBIE:
                 return True
 
-            # If it's a zombie, we can't terminate it normally - the parent needs to reap it
-            if self._is_zombie_process(pid):
-                self.logger.warning(f"Process {pid} is a zombie - attempting to clean up")
-                await self._cleanup_zombie_process(pid)
-                return True
+            current = parse_recorder_process(pid, process.cmdline(), process.create_time())
+            output = (
+                expected.recording_file_path
+                if isinstance(expected, ProcessInfo) else expected.output_file
+            )
+            matches = (
+                current is not None
+                and current.username == expected.username
+                and bool(output)
+                and current.output_file == output
+            )
+            if matches and isinstance(expected, ProcessInfo):
+                # Registration occurs after spawn. A newer process cannot own this row.
+                matches = current.create_time <= expected.started_at.timestamp()
+            elif matches:
+                # Startup rollback knows the exact command before a DB row exists.
+                matches = current.cmdline == expected.cmdline and (
+                    expected.create_time == 0.0
+                    or current.create_time == expected.create_time
+                )
+            if not matches:
+                self.logger.error("Refusing to signal PID=%s: recorder identity mismatch", pid)
+                return False
+
+            def still_running():
+                return process.is_running() and process.status() != psutil.STATUS_ZOMBIE
+
+            def send_verified(sig):
+                if tuple(process.cmdline()) != current.cmdline:
+                    raise ValueError("Recorder command changed before signaling")
+                # psutil also checks PID reuse before sending the signal.
+                process.send_signal(sig)
 
             if graceful:
-                # Try graceful termination first (SIGTERM)
-                try:
-                    os.kill(pid, signal.SIGTERM)
-                    self.logger.debug(f"Sent SIGTERM to process {pid}")
+                send_verified(signal.SIGTERM)
+                for _ in range(30):
+                    await asyncio.sleep(1)
+                    if not still_running():
+                        return True
 
-                    # Wait for graceful shutdown
-                    for _ in range(30):  # Wait up to 30 seconds
-                        await asyncio.sleep(1)
-                        if not self._is_process_running(pid):
-                            self.logger.debug(f"Process {pid} terminated gracefully")
-                            return True
-
-                    self.logger.warning(f"Process {pid} did not terminate gracefully, using force")
-                except ProcessLookupError:
-                    # Process already terminated
-                    return True
-
-            # Force termination (SIGKILL)
-            try:
-                os.kill(pid, signal.SIGKILL)
-                self.logger.debug(f"Sent SIGKILL to process {pid}")
-
-                # Wait a bit for force kill to take effect
-                await asyncio.sleep(2)
-
-                if not self._is_process_running(pid):
-                    self.logger.debug(f"Process {pid} force terminated")
-                    return True
-                else:
-                    self.logger.error(f"Process {pid} could not be terminated")
-                    return False
-
-            except ProcessLookupError:
-                # Process already terminated
+            if not still_running():
                 return True
-
+            send_verified(signal.SIGKILL)
+            await asyncio.sleep(2)
+            return not still_running()
+        except (psutil.NoSuchProcess, ProcessLookupError):
+            return True
         except Exception as e:
             self.logger.error(f"Error terminating process {pid}: {e}")
             return False
@@ -1547,7 +1562,9 @@ class LiveProcessManager:
                     results[process.pid] = False
                     continue
 
-            stopped = await self._terminate_process(process.pid, graceful=not force)
+            stopped = await self._terminate_process(
+                process.pid, graceful=not force, expected=process
+            )
             results[process.pid] = stopped
             if not stopped:
                 if candidate.process_id is not None:
@@ -1597,7 +1614,9 @@ class LiveProcessManager:
             )
             return False
 
-        stopped = await self._terminate_process(process.pid, graceful=graceful)
+        stopped = await self._terminate_process(
+            process.pid, graceful=graceful, expected=process
+        )
         if stopped:
             self._cleanup_exact_zero_byte_output(
                 process.username,

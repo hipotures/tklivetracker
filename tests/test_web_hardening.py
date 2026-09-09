@@ -88,6 +88,23 @@ def test_update_user_rejects_invalid_intervals(web_client, check_interval) -> No
     assert "Check interval" in response.get_json()["error"]
 
 
+@pytest.mark.parametrize('payload', [
+    {'is_active': False, 'check_interval': 0},
+    {'is_active': None},
+    {'is_active': False, 'is_favorite': 'false'},
+    {'is_active': False, 'notifications_enabled': 'false'},
+])
+def test_rejected_deactivation_leaves_database_unchanged(web_client, payload):
+    with sqlite3.connect(web_client.application.config['DATABASE']) as db:
+        db.execute("UPDATE users SET next_check = '2026-01-01 00:00:00'")
+        db.execute("INSERT INTO live_processes (username, is_active) VALUES ('alice', 1)")
+        before = db.execute('SELECT * FROM users').fetchall()
+    response = web_client.put('/api/users/alice', json=payload)
+    assert response.status_code == 400
+    with sqlite3.connect(web_client.application.config['DATABASE']) as db:
+        assert db.execute('SELECT * FROM users').fetchall() == before
+
+
 @pytest.mark.parametrize(
     ("method", "path", "payload"),
     [

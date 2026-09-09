@@ -8,6 +8,8 @@ CLI operations are not affected by the lock file.
 import os
 import json
 import logging
+import fcntl
+import stat
 from typing import Dict, Optional, Tuple
 from datetime import datetime
 from pathlib import Path
@@ -25,6 +27,7 @@ class SupervisorLock:
         self.lock_file_path = Path(lock_file_path)
         self.logger = logging.getLogger('LOCK')
         self.current_lock_data: Optional[Dict] = None
+        self._guard_fd: Optional[int] = None
 
     def check_server_lock(self) -> Tuple[bool, Optional[Dict]]:
         """
@@ -43,19 +46,15 @@ class SupervisorLock:
             with open(self.lock_file_path, 'r') as f:
                 lock_data = json.load(f)
 
-            # Validate lock file structure
+            # This is advisory only. Acquisition checks the OS lock as well.
             required_fields = ['pid', 'started_at', 'config_path', 'hostname']
-            if not all(field in lock_data for field in required_fields):
-                self.logger.warning(f"Invalid lock file structure, removing: {self.lock_file_path}")
-                self._remove_lock_file()
+            if not isinstance(lock_data, dict) or not all(field in lock_data for field in required_fields):
                 return False, None
 
             # Check if process is still running
             pid = lock_data['pid']
             if not self._is_process_running(pid):
                 self.logger.info(f"Found stale lock file (process {pid} no longer running)")
-                self.logger.info(f"Removing stale lock: {self.lock_file_path}")
-                self._remove_lock_file()
                 return False, None
 
             # Lock is valid and process is running
@@ -63,11 +62,6 @@ class SupervisorLock:
 
         except Exception as e:
             self.logger.error(f"Error checking lock file: {e}")
-            # If we can't read the lock file, try to remove it and continue
-            try:
-                self._remove_lock_file()
-            except:
-                pass
             return False, None
 
     def create_server_lock(self) -> bool:
@@ -77,9 +71,26 @@ class SupervisorLock:
         Returns:
             True if lock created successfully, False otherwise
         """
+        if self._guard_fd is not None:
+            return True
+        guard_fd = None
         try:
             # Ensure directory exists
             self.lock_file_path.parent.mkdir(parents=True, exist_ok=True)
+
+            # Never unlink this inode: otherwise waiters can lock different files.
+            guard_fd = os.open(
+                str(self.lock_file_path) + '.guard',
+                os.O_CREAT | os.O_RDWR | os.O_CLOEXEC | os.O_NOFOLLOW,
+                0o600,
+            )
+            if not stat.S_ISREG(os.fstat(guard_fd).st_mode):
+                raise ValueError("Supervisor guard must be a regular file")
+            fcntl.flock(guard_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+
+            # Respect a running supervisor from before OS locks were introduced.
+            if self.check_server_lock()[0]:
+                return False
 
             # Create lock data
             import socket
@@ -91,11 +102,11 @@ class SupervisorLock:
                 'version': self._get_version()
             }
 
-            # Write lock file
-            with open(self.lock_file_path, 'w') as f:
-                json.dump(lock_data, f, indent=2)
+            self._write_lock_data(lock_data)
 
             self.current_lock_data = lock_data
+            self._guard_fd = guard_fd
+            guard_fd = None
             self.logger.debug(f"Created supervisor lock file: {self.lock_file_path}")
 
             # Note: Signal handlers are managed by the main supervisor
@@ -105,6 +116,21 @@ class SupervisorLock:
         except Exception as e:
             self.logger.error(f"Failed to create lock file: {e}")
             return False
+        finally:
+            if guard_fd is not None:
+                os.close(guard_fd)
+
+    def _write_lock_data(self, data: Dict) -> None:
+        fd = os.open(
+            self.lock_file_path,
+            os.O_CREAT | os.O_WRONLY | os.O_CLOEXEC | os.O_NOFOLLOW,
+            0o600,
+        )
+        with os.fdopen(fd, 'w') as stream:
+            if not stat.S_ISREG(os.fstat(stream.fileno()).st_mode):
+                raise ValueError("Supervisor lock metadata must be a regular file")
+            stream.truncate(0)
+            json.dump(data, stream, indent=2)
 
     def remove_server_lock(self) -> bool:
         """
@@ -121,16 +147,17 @@ class SupervisorLock:
 
     def update_config_path(self, config_path: str) -> None:
         """Update config path in current lock data"""
-        if self.current_lock_data:
+        if self.current_lock_data and self._guard_fd is not None:
             self.current_lock_data['config_path'] = os.path.abspath(config_path)
             try:
-                with open(self.lock_file_path, 'w') as f:
-                    json.dump(self.current_lock_data, f, indent=2)
+                self._write_lock_data(self.current_lock_data)
             except Exception as e:
                 self.logger.warning(f"Failed to update config path in lock file: {e}")
 
     def _remove_lock_file(self) -> bool:
-        """Internal method to remove lock file"""
+        """Only the owner may remove metadata and release the OS lock."""
+        if self._guard_fd is None:
+            return True
         try:
             if self.lock_file_path.exists():
                 self.lock_file_path.unlink()
@@ -140,12 +167,20 @@ class SupervisorLock:
         except Exception as e:
             self.logger.error(f"Failed to remove lock file: {e}")
             return False
+        finally:
+            os.close(self._guard_fd)
+            self._guard_fd = None
+            self.current_lock_data = None
 
     def _is_process_running(self, pid: int) -> bool:
         """Check if process with given PID is running"""
         try:
+            if not isinstance(pid, int) or isinstance(pid, bool) or pid <= 1:
+                return False
             # Send signal 0 to check if process exists
             os.kill(pid, 0)
+            return True
+        except PermissionError:
             return True
         except OSError:
             return False
@@ -188,7 +223,7 @@ class SupervisorLock:
    Hostname: {hostname}
    Config: {config_path}
 
-   If you're sure no supervisor is running, delete the lock file:
-   rm {self.lock_file_path}"""
+   The OS lock is released automatically when its owner exits.
+   Do not delete the .guard file while a supervisor may be running."""
 
         return message

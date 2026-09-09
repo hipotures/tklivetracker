@@ -60,6 +60,12 @@ SIGTERM and SIGINT request graceful shutdown. Detached recorders can survive a
 supervisor restart by design; stopping the supervisor is not equivalent to
 stopping every recording.
 
+The supervisor holds an exclusive OS lock in a persistent `.guard` file next
+to its JSON lock metadata. The OS releases ownership on exit; the guard file
+itself remains. Do not delete it while a supervisor may be running, since that
+would allow different instances to lock different inodes. Existing live owners
+using the older JSON-only lock format are still respected.
+
 Inspect the administrative CLI before using a state-changing action:
 
 ```bash

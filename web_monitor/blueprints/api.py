@@ -369,29 +369,7 @@ def update_user(username):
         if not isinstance(data, dict) or not data:
             return jsonify({'error': 'No data provided'}), 400
 
-        db = get_db()
-
-        # Special handling for deactivation when user might have active recording
-        if 'is_active' in data and not data['is_active']:
-            # Check if user has active recording
-            cursor = db.cursor()
-            cursor.execute("SELECT id FROM users WHERE username = ?", (username,))
-            user_row = cursor.fetchone()
-            if user_row:
-                user_id = user_row['id']
-
-                # Check for active recording process
-                cursor.execute("SELECT COUNT(*) as count FROM live_processes WHERE username = ? AND is_active = 1", (username,))
-                process_count = cursor.fetchone()['count']
-
-                if process_count > 0:
-                    # Set next_check to future to prevent race condition
-                    current_app.logger.info(f"User {username} has active recording, setting next_check to +1 day before deactivation")
-                    future_time = (datetime.now() + timedelta(days=1)).strftime('%Y-%m-%d %H:%M:%S')
-                    cursor.execute("UPDATE users SET next_check = ? WHERE username = ?", (future_time, username))
-                    db.commit()
-
-        # Extract valid fields
+        # Validate the entire request before any database or filesystem mutation.
         valid_updates = {}
         if 'check_interval' in data:
             check_interval = parse_bounded_int(
@@ -409,6 +387,18 @@ def update_user(username):
 
         if not valid_updates:
             return jsonify({'error': 'No valid fields to update'}), 400
+
+        db = get_db()
+        if valid_updates.get('is_active') == 0:
+            # Delay checks before deactivation when a recording is active.
+            future_time = (datetime.now() + timedelta(days=1)).strftime('%Y-%m-%d %H:%M:%S')
+            db.execute(
+                "UPDATE users SET next_check = ? WHERE username = ? "
+                "AND EXISTS (SELECT 1 FROM live_processes "
+                "WHERE username = ? AND is_active = 1)",
+                (future_time, username, username),
+            )
+            db.commit()
 
         success = update_user_properties(
             db,

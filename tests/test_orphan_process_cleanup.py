@@ -213,7 +213,8 @@ async def test_confirmed_process_stop_removes_its_exact_empty_output(tmp_path):
     store = FakeMetadataStore([process])
     manager = LiveProcessManager(store, {"recordings_path": str(tmp_path)})
 
-    async def terminate(_pid, _graceful):
+    async def terminate(_pid, _graceful, *, expected):
+        assert expected is process
         return True
 
     manager._terminate_process = terminate
@@ -876,7 +877,8 @@ async def test_restart_cleanup_counts_each_successfully_stopped_recorder(tmp_pat
         {"recordings_path": str(tmp_path)},
     )
 
-    async def terminate(pid, graceful=True):
+    async def terminate(pid, graceful=True, *, expected):
+        assert expected is process
         assert pid == 123
         assert graceful is False
         return True
@@ -1111,7 +1113,7 @@ async def test_candidate_metadata_changes_only_after_verified_stop(tmp_path):
     manager = LiveProcessManager(store, {"recordings_path": str(tmp_path)})
     manager.get_system_recorder_processes = lambda: [process, keeper]
 
-    async def failed_terminate(pid, graceful=True):
+    async def failed_terminate(pid, graceful=True, *, expected):
         return False
 
     manager._terminate_process = failed_terminate
@@ -1121,7 +1123,7 @@ async def test_candidate_metadata_changes_only_after_verified_stop(tmp_path):
     assert store.stopped == []
     assert store.health_updates == [(1, "termination_failed", 0)]
 
-    async def successful_terminate(pid, graceful=True):
+    async def successful_terminate(pid, graceful=True, *, expected):
         return True
 
     manager._terminate_process = successful_terminate

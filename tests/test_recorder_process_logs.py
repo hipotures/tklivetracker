@@ -316,7 +316,8 @@ async def test_registration_race_returns_marker_without_error_log(
     async def start_process(_command, _username):
         return SimpleNamespace(pid=4106), 4106, None
 
-    async def terminate_process(_pid):
+    async def terminate_process(_pid, *, expected):
+        assert expected.username == 'alice'
         return True
 
     manager._count_running_processes = no_processes
