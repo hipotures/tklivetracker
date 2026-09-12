@@ -112,14 +112,26 @@ The optional folder-oriented helpers are installed into `~/.local/bin`:
 ```bash
 uv run python scripts/install_tt_tools.py --help
 uv run python scripts/install_tt_tools.py --config config.yaml
+# For a recordings export mounted on another machine:
+uv run python scripts/install_tt_tools.py --config config.yaml \
+  --api-tools-only --api-url http://TRACKER-SERVER:5001
 ```
 
 This installs `ttfav`, `ttdel`, and `fav-mtime` plus a local configuration under
 `~/.config/ttracker/`. `ttfav` toggles favorite state from a configured user
-folder, `ttdel` deactivates the current user and moves its recording directory
-only when no active recorder is registered,
-and `fav-mtime` synchronizes favorite symlink timestamps. Use each command's
-`--dry-run` option before a state-changing invocation.
+folder through the web API, so exported folders may have a different mount
+prefix and the server remains responsible for its database and favorite links.
+The current directory name is treated as the username and verified through the
+API, so no local recording path must match the server. `ttfav` (or `ttfav add`)
+adds a user who is not yet a favorite. If the user is already a favorite,
+`ttfav` asks for confirmation before removing it. `ttfav del` removes without
+the interactive question.
+The web API must only be exposed on a trusted network because it has no built-in
+authentication. `ttdel` deactivates the current user and moves its recording
+directory on the server only when no active recorder is registered. It derives
+the user from the current directory, verifies the current server state, and asks
+before deactivation. `fav-mtime` synchronizes favorite symlink timestamps. Use
+each command's `--dry-run` option before a state-changing invocation.
 
 ## Release/development checks
 

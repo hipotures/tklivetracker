@@ -1,5 +1,6 @@
 import os
 import shutil
+import sqlite3
 import stat
 from pathlib import Path
 from datetime import datetime, timedelta
@@ -352,11 +353,102 @@ def get_user(username):
             return jsonify({'error': 'User not found'}), 404
 
         user = user_data_transformer.transform_user_row(row, include_live_duration=True)
+        user['is_deleted'] = int(row['is_active']) == -1
         return jsonify({'user': user})
 
     except Exception as e:
         current_app.logger.error(f"Get user error for {username}: {e}")
         return jsonify({'error': 'Internal server error'}), 500
+
+
+@api_bp.route('/users/<username>/deactivate', methods=['POST'])
+@require_write_access
+def deactivate_user(username):
+    """Safely deactivate one user and move its recording directory on the server."""
+    try:
+        source_path = resolve_user_recordings_directory(
+            current_app.config['RECORDINGS_PATH'], username
+        )
+        inactive_value = (
+            current_app.config.get('CONFIG', {})
+            .get('paths', {})
+            .get('inactive_users_path')
+        )
+        if not inactive_value:
+            raise ValueError("inactive_users_path is not configured")
+        inactive_root = Path(inactive_value).expanduser().resolve()
+        destination_path = inactive_root / username
+        if destination_path == inactive_root or destination_path.parent != inactive_root:
+            raise ValueError("User inactive path escapes the inactive-users root")
+
+        db = get_db()
+        row = db.execute(
+            "SELECT is_active FROM users WHERE username = ?",
+            (username,),
+        ).fetchone()
+        if row is None:
+            return jsonify({'error': 'User not found'}), 404
+        current_status = int(row['is_active'])
+        if current_status == -1:
+            return jsonify({'error': 'User is marked as deleted'}), 409
+        if current_status == 0:
+            return jsonify({
+                'message': f'User {username} is already inactive',
+                'already_inactive': True,
+                'moved': False,
+            })
+
+        process_table = db.execute(
+            "SELECT 1 FROM sqlite_master "
+            "WHERE type = 'table' AND name = 'live_processes'"
+        ).fetchone()
+        if process_table is not None:
+            active_process = db.execute(
+                "SELECT 1 FROM live_processes "
+                "WHERE username = ? AND is_active = 1 LIMIT 1",
+                (username,),
+            ).fetchone()
+            if active_process is not None:
+                return jsonify({
+                    'error': f'Active recorder is registered for {username}'
+                }), 409
+
+        source_exists = source_path.exists()
+        if source_exists and (destination_path.exists() or destination_path.is_symlink()):
+            moved_at = datetime.now().strftime("%Y%m%d_%H%M%S")
+            destination_path = inactive_root / f"{username}_{moved_at}"
+        if source_exists and (
+            destination_path.exists() or destination_path.is_symlink()
+        ):
+            return jsonify({'error': 'Inactive destination already exists'}), 409
+
+        try:
+            db.execute(
+                "UPDATE users SET is_active = 0, "
+                "last_deactivated_at = DATETIME('now', 'localtime') "
+                "WHERE username = ?",
+                (username,),
+            )
+            if source_exists:
+                inactive_root.mkdir(parents=True, exist_ok=True)
+                shutil.move(str(source_path), str(destination_path))
+            db.commit()
+        except (OSError, sqlite3.Error):
+            db.rollback()
+            raise
+
+        sync_favorite_links_for_request(db)
+        return jsonify({
+            'message': f'User {username} deactivated successfully',
+            'already_inactive': False,
+            'moved': source_exists,
+        })
+
+    except ValueError as error:
+        return jsonify({'error': str(error)}), 400
+    except (OSError, sqlite3.Error) as error:
+        current_app.logger.error("Deactivate user error for %s: %s", username, error)
+        return jsonify({'error': 'Failed to deactivate user'}), 500
 
 @api_bp.route('/users/<username>', methods=['PUT'])
 @require_write_access

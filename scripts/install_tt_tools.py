@@ -4,6 +4,7 @@ import argparse
 import shutil
 import sys
 from pathlib import Path
+from urllib.parse import urlsplit
 
 import yaml
 
@@ -23,7 +24,44 @@ def _load_project_config(project_root: Path, config_path: Path) -> dict:
         return resolve_config_placeholders(yaml.safe_load(f) or {})
 
 
-def _build_tools_config(project_root: Path, config: dict, config_dir: Path) -> dict:
+def _normalize_api_url(value: str) -> str:
+    normalized = value.strip().rstrip("/")
+    parsed = urlsplit(normalized)
+    if (
+        parsed.scheme not in {"http", "https"}
+        or not parsed.netloc
+        or parsed.username is not None
+        or parsed.password is not None
+        or parsed.query
+        or parsed.fragment
+    ):
+        raise ValueError("API URL must be HTTP(S) without credentials, query, or fragment")
+    return normalized
+
+
+def _default_api_url(config: dict) -> str:
+    web_config = config.get("web_monitor", {})
+    configured_url = web_config.get("api_url")
+    if configured_url:
+        return _normalize_api_url(str(configured_url))
+
+    host = str(web_config.get("host", "0.0.0.0")).strip()
+    port = int(web_config.get("port", 5001))
+    if host == "0.0.0.0":
+        host = "127.0.0.1"
+    elif host == "::":
+        host = "::1"
+    if ":" in host and not host.startswith("["):
+        host = f"[{host}]"
+    return _normalize_api_url(f"http://{host}:{port}")
+
+
+def _build_tools_config(
+    project_root: Path,
+    config: dict,
+    config_dir: Path,
+    api_url: str | None = None,
+) -> dict:
     paths = config.get("paths", {})
     recordings_path = resolve_path(paths.get("recordings_path"), base_dir=str(config_dir))
     recordings_fav_path = resolve_path(paths.get("recordings_fav_path"), base_dir=str(config_dir))
@@ -52,6 +90,7 @@ def _build_tools_config(project_root: Path, config: dict, config_dir: Path) -> d
     return {
         "project_root": str(project_root),
         "db_path": db_path,
+        "api_url": _normalize_api_url(api_url) if api_url else _default_api_url(config),
         "recordings_path": recordings_path,
         "recordings_fav_path": recordings_fav_path,
         "inactive_users_path": inactive_users_path,
@@ -67,6 +106,18 @@ def main(argv=None) -> int:
         default=PROJECT_ROOT / "config.yaml",
         help="Path to config.yaml (default: project config.yaml)",
     )
+    parser.add_argument(
+        "--api-url",
+        help=(
+            "Web monitor URL used by ttfav and ttdel (for example "
+            "http://192.168.100.201:5001); overrides web_monitor.api_url"
+        ),
+    )
+    parser.add_argument(
+        "--api-tools-only",
+        action="store_true",
+        help="Install only API-based ttfav and ttdel (recommended on a remote client)",
+    )
     args = parser.parse_args(argv)
     project_root = PROJECT_ROOT
     config_path = Path(absolute_config_path(args.config))
@@ -74,6 +125,7 @@ def main(argv=None) -> int:
         project_root,
         _load_project_config(project_root, config_path),
         config_path.parent,
+        api_url=args.api_url,
     )
 
     bin_dir = Path.home() / ".local" / "bin"
@@ -81,7 +133,6 @@ def main(argv=None) -> int:
     recordings_fav_dir = Path(config["recordings_fav_path"])
     bin_dir.mkdir(parents=True, exist_ok=True)
     config_dir.mkdir(parents=True, exist_ok=True)
-    recordings_fav_dir.mkdir(parents=True, exist_ok=True)
 
     source_ttfav_script = project_root / "scripts" / "ttfav.py"
     source_ttdel_script = project_root / "scripts" / "ttdel.py"
@@ -97,13 +148,16 @@ def main(argv=None) -> int:
     destination_ttfav_script.chmod(0o755)
     shutil.copy2(source_ttdel_script, destination_ttdel_script)
     destination_ttdel_script.chmod(0o755)
-    removed_legacy_fav = legacy_fav_script.exists() or legacy_fav_script.is_symlink()
-    if removed_legacy_fav:
-        legacy_fav_script.unlink()
-    shutil.copy2(source_mtime_script, destination_mtime_script)
-    destination_mtime_script.chmod(0o755)
-    shutil.copy2(source_mtime_script, local_mtime_script)
-    local_mtime_script.chmod(0o755)
+    removed_legacy_fav = False
+    if not args.api_tools_only:
+        recordings_fav_dir.mkdir(parents=True, exist_ok=True)
+        removed_legacy_fav = legacy_fav_script.exists() or legacy_fav_script.is_symlink()
+        if removed_legacy_fav:
+            legacy_fav_script.unlink()
+        shutil.copy2(source_mtime_script, destination_mtime_script)
+        destination_mtime_script.chmod(0o755)
+        shutil.copy2(source_mtime_script, local_mtime_script)
+        local_mtime_script.chmod(0o755)
 
     with destination_config.open("w", encoding="utf-8") as f:
         json.dump(config, f, indent=2)
@@ -112,15 +166,18 @@ def main(argv=None) -> int:
     print("TkLiveTracker tools installed")
     print(f"ttfav command: {destination_ttfav_script}")
     print(f"ttdel command: {destination_ttdel_script}")
-    if removed_legacy_fav:
-        print(f"removed legacy command: {legacy_fav_script}")
-    print(f"mtime command: {destination_mtime_script}")
-    print(f"mtime click file: {local_mtime_script}")
+    if not args.api_tools_only:
+        if removed_legacy_fav:
+            print(f"removed legacy command: {legacy_fav_script}")
+        print(f"mtime command: {destination_mtime_script}")
+        print(f"mtime click file: {local_mtime_script}")
     print(f"config: {destination_config}")
-    print(f"RECORDINGS_PATH: {config['recordings_path']}")
-    print(f"RECORDINGS_FAV_PATH: {config['recordings_fav_path']}")
-    print(f"INACTIVE_USERS_PATH: {config['inactive_users_path']}")
-    print(f"FAVORITE_SOURCE_PATH: {config['favorite_source_path']}")
+    print(f"API_URL: {config['api_url']}")
+    if not args.api_tools_only:
+        print(f"RECORDINGS_PATH: {config['recordings_path']}")
+        print(f"RECORDINGS_FAV_PATH: {config['recordings_fav_path']}")
+        print(f"INACTIVE_USERS_PATH: {config['inactive_users_path']}")
+        print(f"FAVORITE_SOURCE_PATH: {config['favorite_source_path']}")
     return 0
 
 

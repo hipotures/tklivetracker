@@ -2,22 +2,22 @@
 import argparse
 import json
 import os
-import sqlite3
-import sys
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
+from urllib.error import HTTPError, URLError
+from urllib.parse import quote, urlsplit
+from urllib.request import Request, urlopen
 
 DEFAULT_CONFIG_PATH = Path.home() / ".config" / "ttracker" / "fav.json"
+API_TIMEOUT_SECONDS = 5.0
+_TIKTOK_USERNAME_PATTERN = re.compile(r"^[A-Za-z0-9._]{2,24}$")
 
 
 @dataclass
 class TtFavConfig:
-    db_path: Path
-    recordings_path: Path
-    recordings_fav_path: Path
-    favorite_source_path: Optional[Path] = None
-    project_root: Optional[Path] = None
+    api_url: str
 
 
 @dataclass
@@ -35,135 +35,166 @@ def _load_config(path: Path) -> TtFavConfig:
     with path.open("r", encoding="utf-8") as f:
         data = json.load(f)
 
-    project_root = data.get("project_root")
-    recordings_path = Path(data["recordings_path"]).expanduser()
     return TtFavConfig(
-        db_path=Path(data["db_path"]).expanduser(),
-        recordings_path=recordings_path,
-        recordings_fav_path=Path(data["recordings_fav_path"]).expanduser(),
-        favorite_source_path=Path(data.get("favorite_source_path", recordings_path)).expanduser(),
-        project_root=Path(project_root).expanduser() if project_root else None,
+        api_url=_normalize_api_url(data.get("api_url")),
     )
 
 
-def _relative_first_component(cwd: Path, root: Path) -> Optional[str]:
-    try:
-        relative = cwd.relative_to(root)
-    except ValueError:
-        return None
+def _normalize_api_url(value: object) -> str:
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError(
+            "api_url is missing; reinstall the tools with --api-url http://SERVER:PORT"
+        )
 
-    if not relative.parts:
-        return None
+    normalized = value.strip().rstrip("/")
+    parsed = urlsplit(normalized)
+    if (
+        parsed.scheme not in {"http", "https"}
+        or not parsed.netloc
+        or parsed.username is not None
+        or parsed.password is not None
+        or parsed.query
+        or parsed.fragment
+    ):
+        raise ValueError("api_url must be an HTTP(S) URL without credentials, query, or fragment")
+    return normalized
 
-    return relative.parts[0]
+
+def _valid_username(value: str) -> bool:
+    return bool(_TIKTOK_USERNAME_PATTERN.fullmatch(value)) and not value.endswith(".")
 
 
-def determine_action(config: TtFavConfig, cwd: os.PathLike | str) -> Optional[TtFavAction]:
+def determine_action(
+    cwd: os.PathLike | str,
+    requested_action: Optional[str] = None,
+) -> Optional[TtFavAction]:
     cwd_path = _absolute_lexical(cwd)
-    recordings_root = _absolute_lexical(config.recordings_path)
-    fav_root = _absolute_lexical(config.recordings_fav_path)
-    source_root = _absolute_lexical(
-        config.favorite_source_path or config.recordings_path
-    )
-
-    fav_username = _relative_first_component(cwd_path, fav_root)
-    if fav_username:
-        return TtFavAction(fav_username, False, "disabled")
-
-    source_username = _relative_first_component(cwd_path, source_root)
-    if source_username:
-        return TtFavAction(source_username, True, "enabled")
-
-    recordings_username = _relative_first_component(cwd_path, recordings_root)
-    if recordings_username:
-        return TtFavAction(recordings_username, True, "enabled")
-
-    return None
-
-
-def _connect(db_path: Path) -> sqlite3.Connection:
-    conn = sqlite3.connect(str(db_path.expanduser()), timeout=30.0)
-    conn.row_factory = sqlite3.Row
-    return conn
-
-
-def _current_status(conn: sqlite3.Connection, username: str) -> Optional[int]:
-    row = conn.execute("SELECT is_favorite FROM users WHERE username = ?", (username,)).fetchone()
-    if not row:
+    username = cwd_path.name
+    if not _valid_username(username):
         return None
-    return int(row["is_favorite"] or 0)
+
+    is_favorite = requested_action != "del"
+    label = "enabled" if is_favorite else "disabled"
+    return TtFavAction(username, is_favorite, label)
 
 
-def _update_status(conn: sqlite3.Connection, username: str, is_favorite: bool) -> bool:
-    conn.execute(
-        "UPDATE users SET is_favorite = ? WHERE username = ?",
-        (1 if is_favorite else 0, username),
+def _api_request(config: TtFavConfig, method: str, path: str, data: Optional[dict] = None) -> dict:
+    body = None
+    headers = {"Accept": "application/json"}
+    if data is not None:
+        body = json.dumps(data).encode("utf-8")
+        headers["Content-Type"] = "application/json"
+
+    request = Request(
+        f"{config.api_url}{path}",
+        data=body,
+        headers=headers,
+        method=method,
     )
-    conn.commit()
-    return True
-
-
-def _sync_links(config: TtFavConfig, conn: sqlite3.Connection) -> str:
-    if config.project_root:
-        project_root = str(config.project_root)
-        if project_root not in sys.path:
-            sys.path.insert(0, project_root)
-
-    from modules.favorite_links import format_sync_report, sync_favorite_links
-
-    source_path = config.favorite_source_path or config.recordings_path
-    report = sync_favorite_links(conn, source_path, config.recordings_fav_path)
-    return format_sync_report(report)
-
-
-def _print_outside_message(config: TtFavConfig) -> None:
-    print("outside configured recording folders")
-    print(f"RECORDINGS_PATH: {config.recordings_path}")
-    print(f"RECORDINGS_FAV_PATH: {config.recordings_fav_path}")
-    print(f"FAVORITE_SOURCE_PATH: {config.favorite_source_path or config.recordings_path}")
-
-
-def run_ttfav(config: TtFavConfig, cwd: os.PathLike | str, dry_run: bool = False) -> int:
-    action = determine_action(config, cwd)
-    if action is None:
-        _print_outside_message(config)
-        conn = _connect(config.db_path)
-        try:
-            print("syncing favorite links from database")
-            print(_sync_links(config, conn))
-            return 0
-        finally:
-            conn.close()
-
-    conn = _connect(config.db_path)
     try:
-        current = _current_status(conn, action.username)
-        if current is None:
-            print(f"user not found in database: {action.username}")
-            return 1
+        with urlopen(request, timeout=API_TIMEOUT_SECONDS) as response:
+            payload = response.read()
+    except HTTPError as exc:
+        payload = exc.read()
+        try:
+            message = json.loads(payload.decode("utf-8")).get("error")
+        except (UnicodeDecodeError, json.JSONDecodeError, AttributeError):
+            message = None
+        raise RuntimeError(message or f"API returned HTTP {exc.code}") from exc
+    except (URLError, TimeoutError, OSError) as exc:
+        raise RuntimeError(f"cannot reach API at {config.api_url}: {exc}") from exc
+
+    try:
+        result = json.loads(payload.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise RuntimeError("API returned an invalid JSON response") from exc
+    if not isinstance(result, dict):
+        raise RuntimeError("API returned an unexpected response")
+    return result
+
+
+def _print_invalid_directory_message(cwd: os.PathLike | str) -> None:
+    print(f"current directory name is not a valid TikTok username: {Path(cwd).name}")
+
+
+def _confirm_removal(username: str) -> bool:
+    try:
+        answer = input(
+            f"{username} is already a favorite; remove from favorites? [y/N] "
+        )
+    except (EOFError, OSError):
+        return False
+    return answer.strip().lower() in {"y", "yes"}
+
+
+def run_ttfav(
+    config: TtFavConfig,
+    cwd: os.PathLike | str,
+    dry_run: bool = False,
+    requested_action: Optional[str] = None,
+) -> int:
+    action = determine_action(cwd, requested_action=requested_action)
+    if action is None:
+        _print_invalid_directory_message(cwd)
+        return 1
+
+    user_path = f"/api/users/{quote(action.username, safe='')}"
+    try:
+        user_response = _api_request(config, "GET", user_path)
+        user = user_response.get("user")
+        if not isinstance(user, dict) or user.get("username") != action.username:
+            raise RuntimeError("API returned an unexpected user response")
+
+        current = bool(user.get("is_favorite"))
+        if requested_action is None and current:
+            print(f"favorite already enabled: {action.username}")
+            if dry_run:
+                print(f"would ask before removing favorite: {action.username}")
+                return 0
+            if not _confirm_removal(action.username):
+                print(f"favorite unchanged: {action.username}")
+                return 0
+            action = TtFavAction(action.username, False, "disabled")
 
         if dry_run:
             verb = "enable" if action.is_favorite else "disable"
             print(f"would {verb} favorite: {action.username}")
             return 0
 
-        _update_status(conn, action.username, action.is_favorite)
-
-        if current == int(action.is_favorite):
+        _api_request(
+            config,
+            "PUT",
+            f"{user_path}/favorite",
+            {"is_favorite": action.is_favorite},
+        )
+        if current == action.is_favorite:
             print(f"favorite already {action.label}: {action.username}")
         else:
             print(f"favorite {action.label}: {action.username}")
-
-        print(_sync_links(config, conn))
         return 0
-    finally:
-        conn.close()
+    except RuntimeError as exc:
+        print(f"ttfav failed for {action.username}: {exc}")
+        return 1
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Toggle TkLiveTracker favorite status from recording folders.")
+    parser = argparse.ArgumentParser(
+        description="Manage the current-directory TikTok user favorite through the web API."
+    )
+    parser.add_argument(
+        "action",
+        nargs="?",
+        choices=("add", "del"),
+        help=(
+            "Add or remove the current-directory user; without an action, add"
+        ),
+    )
     parser.add_argument("--config", default=str(DEFAULT_CONFIG_PATH), help="Path to installed ttfav config JSON")
-    parser.add_argument("--dry-run", action="store_true", help="Print the database action without changing it")
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Check the server state without asking or changing it",
+    )
     return parser
 
 
@@ -177,9 +208,18 @@ def main() -> int:
         print("Run the TkLiveTracker tools installer first.")
         return 2
 
-    config = _load_config(config_path)
+    try:
+        config = _load_config(config_path)
+    except (OSError, KeyError, ValueError, json.JSONDecodeError) as exc:
+        print(f"invalid ttfav config: {exc}")
+        return 2
     cwd = Path(os.environ.get("PWD", os.getcwd()))
-    return run_ttfav(config, cwd, dry_run=args.dry_run)
+    return run_ttfav(
+        config,
+        cwd,
+        dry_run=args.dry_run,
+        requested_action=args.action,
+    )
 
 
 if __name__ == "__main__":

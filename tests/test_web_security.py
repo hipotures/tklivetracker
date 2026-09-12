@@ -14,6 +14,7 @@ from web_monitor.utils.config import load_config
 MUTATING_ROUTES = [
     ("post", "/api/users", {"username": "alice"}),
     ("put", "/api/users/alice", {"check_interval": 300}),
+    ("post", "/api/users/alice/deactivate", {}),
     ("delete", "/api/users/alice", None),
     ("put", "/api/users/alice/favorite", {"is_favorite": True}),
     ("put", "/api/users/alice/notifications", {"notifications_enabled": True}),
@@ -35,6 +36,7 @@ def test_read_only_matrix_enumerates_every_unsafe_route() -> None:
     enumerated = {
         ("post", "/api/users"),
         ("put", "/api/users/<username>"),
+        ("post", "/api/users/<username>/deactivate"),
         ("delete", "/api/users/<username>"),
         ("put", "/api/users/<username>/favorite"),
         ("put", "/api/users/<username>/notifications"),

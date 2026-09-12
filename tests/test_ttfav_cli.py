@@ -1,191 +1,221 @@
-import os
 import json
-import sqlite3
+import os
 import subprocess
 from pathlib import Path
 
+import scripts.ttfav as ttfav
 from scripts.ttfav import TtFavConfig, run_ttfav
 
 
-def _create_users_db(path: Path) -> sqlite3.Connection:
-    conn = sqlite3.connect(path)
-    conn.row_factory = sqlite3.Row
-    conn.execute(
-        """
-        CREATE TABLE users (
-            id INTEGER PRIMARY KEY,
-            username TEXT NOT NULL UNIQUE,
-            is_favorite INTEGER NOT NULL DEFAULT 0
-        )
-        """
-    )
-    return conn
+def _config(tmp_path: Path) -> TtFavConfig:
+    return TtFavConfig(api_url="http://192.168.100.201:5001")
 
 
-def _favorite_status(db_path: Path, username: str) -> int:
-    conn = sqlite3.connect(db_path)
-    row = conn.execute("SELECT is_favorite FROM users WHERE username = ?", (username,)).fetchone()
-    conn.close()
-    return int(row[0])
+def test_run_ttfav_uses_api_from_exported_recordings_path(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    calls = []
 
+    def fake_api_request(config, method, path, data=None):
+        calls.append((config.api_url, method, path, data))
+        if method == "GET":
+            return {"user": {"username": "alice", "is_favorite": False}}
+        return {"message": "updated", "is_favorite": True}
 
-def test_run_ttfav_from_recordings_path_sets_user_favorite(tmp_path: Path, capsys) -> None:
-    db_path = tmp_path / "users.db"
-    conn = _create_users_db(db_path)
-    conn.execute("INSERT INTO users (username, is_favorite) VALUES (?, ?)", ("alice", 0))
-    conn.commit()
-    conn.close()
+    monkeypatch.setattr(ttfav, "_api_request", fake_api_request)
+    exported_user_dir = tmp_path / "TT" / "recordings" / "alice"
+    exported_user_dir.mkdir(parents=True)
 
-    recordings_path = tmp_path / "recordings"
-    fav_path = tmp_path / "recordings_fav"
-    (recordings_path / "alice").mkdir(parents=True)
-
-    exit_code = run_ttfav(
-        TtFavConfig(db_path=db_path, recordings_path=recordings_path, recordings_fav_path=fav_path),
-        cwd=recordings_path / "alice",
-        dry_run=False,
-    )
+    exit_code = run_ttfav(_config(tmp_path), exported_user_dir)
 
     assert exit_code == 0
-    assert _favorite_status(db_path, "alice") == 1
-    assert (fav_path / "alice").is_symlink()
+    assert calls == [
+        (
+            "http://192.168.100.201:5001",
+            "GET",
+            "/api/users/alice",
+            None,
+        ),
+        (
+            "http://192.168.100.201:5001",
+            "PUT",
+            "/api/users/alice/favorite",
+            {"is_favorite": True},
+        ),
+    ]
     assert "favorite enabled: alice" in capsys.readouterr().out
 
 
-def test_run_ttfav_from_favorites_path_unsets_user_favorite(tmp_path: Path, capsys) -> None:
-    db_path = tmp_path / "users.db"
-    conn = _create_users_db(db_path)
-    conn.execute("INSERT INTO users (username, is_favorite) VALUES (?, ?)", ("alice", 1))
-    conn.commit()
-    conn.close()
+def test_run_ttfav_del_from_arbitrary_export_path_disables_favorite(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    calls = []
 
-    recordings_path = tmp_path / "recordings"
-    fav_path = tmp_path / "recordings_fav"
-    (recordings_path / "alice").mkdir(parents=True)
-    fav_path.mkdir()
-    (fav_path / "alice").symlink_to(recordings_path / "alice", target_is_directory=True)
+    def fake_api_request(config, method, path, data=None):
+        calls.append((method, path, data))
+        if method == "GET":
+            return {"user": {"username": "alice", "is_favorite": True}}
+        return {"message": "updated", "is_favorite": False}
 
-    exit_code = run_ttfav(
-        TtFavConfig(db_path=db_path, recordings_path=recordings_path, recordings_fav_path=fav_path),
-        cwd=fav_path / "alice",
-        dry_run=False,
+    monkeypatch.setattr(ttfav, "_api_request", fake_api_request)
+    exported_user_dir = tmp_path / "different" / "export" / "alice"
+    exported_user_dir.mkdir(parents=True)
+
+    assert run_ttfav(
+        _config(tmp_path),
+        exported_user_dir,
+        requested_action="del",
+    ) == 0
+    assert calls[-1] == (
+        "PUT",
+        "/api/users/alice/favorite",
+        {"is_favorite": False},
     )
-
-    assert exit_code == 0
-    assert _favorite_status(db_path, "alice") == 0
-    assert not (fav_path / "alice").exists()
     assert "favorite disabled: alice" in capsys.readouterr().out
 
 
-def test_run_ttfav_dry_run_does_not_change_database_or_links(tmp_path: Path, capsys) -> None:
-    db_path = tmp_path / "users.db"
-    conn = _create_users_db(db_path)
-    conn.execute("INSERT INTO users (username, is_favorite) VALUES (?, ?)", ("alice", 0))
-    conn.commit()
-    conn.close()
+def test_run_ttfav_del_explicitly_disables_from_recordings_path(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    calls = []
 
-    recordings_path = tmp_path / "recordings"
-    fav_path = tmp_path / "recordings_fav"
-    (recordings_path / "alice").mkdir(parents=True)
+    def fake_api_request(config, method, path, data=None):
+        calls.append((method, path, data))
+        if method == "GET":
+            return {"user": {"username": "alice", "is_favorite": True}}
+        return {"message": "updated", "is_favorite": False}
+
+    monkeypatch.setattr(ttfav, "_api_request", fake_api_request)
+
+    assert run_ttfav(
+        _config(tmp_path),
+        tmp_path / "TT" / "recordings" / "alice",
+        requested_action="del",
+    ) == 0
+    assert calls[-1] == (
+        "PUT",
+        "/api/users/alice/favorite",
+        {"is_favorite": False},
+    )
+
+
+def test_run_ttfav_checks_user_through_api_in_dry_run(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    calls = []
+
+    def fake_api_request(config, method, path, data=None):
+        calls.append((method, path, data))
+        return {"user": {"username": "alice", "is_favorite": False}}
+
+    monkeypatch.setattr(ttfav, "_api_request", fake_api_request)
 
     exit_code = run_ttfav(
-        TtFavConfig(db_path=db_path, recordings_path=recordings_path, recordings_fav_path=fav_path),
-        cwd=recordings_path / "alice",
+        _config(tmp_path),
+        tmp_path / "mount" / "compressed" / "alice",
         dry_run=True,
     )
 
     assert exit_code == 0
-    assert _favorite_status(db_path, "alice") == 0
-    assert not (fav_path / "alice").exists()
+    assert calls == [("GET", "/api/users/alice", None)]
     assert "would enable favorite: alice" in capsys.readouterr().out
 
 
-def test_run_ttfav_outside_configured_paths_syncs_links(tmp_path: Path, capsys) -> None:
-    db_path = tmp_path / "users.db"
-    conn = _create_users_db(db_path)
-    conn.execute("INSERT INTO users (username, is_favorite) VALUES (?, ?)", ("alice", 1))
-    conn.commit()
-    conn.close()
-
-    recordings_path = tmp_path / "recordings"
-    fav_path = tmp_path / "recordings_fav"
-    outside = tmp_path / "outside"
-    (recordings_path / "alice").mkdir(parents=True)
-    outside.mkdir()
-
-    exit_code = run_ttfav(
-        TtFavConfig(db_path=db_path, recordings_path=recordings_path, recordings_fav_path=fav_path),
-        cwd=outside,
-        dry_run=False,
-    )
-
-    assert exit_code == 0
-    assert (fav_path / "alice").is_symlink()
-    output = capsys.readouterr().out
-    assert "syncing favorite links from database" in output
-    assert "links added: alice" in output
-    assert str(recordings_path) in output
-    assert str(fav_path) in output
-
-
-def test_run_ttfav_syncs_links_from_separate_favorite_source(tmp_path: Path) -> None:
-    db_path = tmp_path / "users.db"
-    conn = _create_users_db(db_path)
-    conn.execute("INSERT INTO users (username, is_favorite) VALUES (?, ?)", ("alice", 1))
-    conn.commit()
-    conn.close()
-
-    recordings_path = tmp_path / "recordings"
-    compressed_path = tmp_path / "compressed"
-    fav_path = tmp_path / "recordings_fav"
-    outside = tmp_path / "outside"
-    (recordings_path / "alice").mkdir(parents=True)
-    (compressed_path / "alice").mkdir(parents=True)
-    outside.mkdir()
-
-    exit_code = run_ttfav(
-        TtFavConfig(
-            db_path=db_path,
-            recordings_path=recordings_path,
-            recordings_fav_path=fav_path,
-            favorite_source_path=compressed_path,
-        ),
-        cwd=outside,
-    )
-
-    assert exit_code == 0
-    assert (fav_path / "alice").resolve() == (compressed_path / "alice").resolve()
-
-
-def test_run_ttfav_from_separate_favorite_source_sets_user_favorite(
+def test_run_ttfav_invalid_directory_name_does_not_call_api(
     tmp_path: Path,
+    monkeypatch,
     capsys,
 ) -> None:
-    db_path = tmp_path / "users.db"
-    conn = _create_users_db(db_path)
-    conn.execute("INSERT INTO users (username, is_favorite) VALUES (?, ?)", ("alice", 0))
-    conn.commit()
-    conn.close()
+    def unexpected_api_request(*args, **kwargs):
+        raise AssertionError("API must not be called outside a recognized user folder")
 
-    recordings_path = tmp_path / "recordings"
-    compressed_path = tmp_path / "compressed"
-    fav_path = tmp_path / "recordings_fav"
-    (compressed_path / "alice").mkdir(parents=True)
+    monkeypatch.setattr(ttfav, "_api_request", unexpected_api_request)
 
-    exit_code = run_ttfav(
-        TtFavConfig(
-            db_path=db_path,
-            recordings_path=recordings_path,
-            recordings_fav_path=fav_path,
-            favorite_source_path=compressed_path,
-        ),
-        cwd=compressed_path / "alice",
+    assert run_ttfav(_config(tmp_path), tmp_path / "not-a-user!") == 1
+    assert "not a valid TikTok username" in capsys.readouterr().out
+
+
+def test_run_ttfav_existing_favorite_requires_confirmation_to_remove(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    calls = []
+
+    def fake_api_request(config, method, path, data=None):
+        calls.append((method, path, data))
+        return {"user": {"username": "alice", "is_favorite": True}}
+
+    monkeypatch.setattr(ttfav, "_api_request", fake_api_request)
+    monkeypatch.setattr(ttfav, "_confirm_removal", lambda username: False)
+
+    assert run_ttfav(_config(tmp_path), tmp_path / "anywhere" / "alice") == 0
+    assert calls == [("GET", "/api/users/alice", None)]
+    output = capsys.readouterr().out
+    assert "favorite already enabled: alice" in output
+    assert "favorite unchanged: alice" in output
+
+
+def test_run_ttfav_existing_favorite_removes_after_confirmation(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    calls = []
+
+    def fake_api_request(config, method, path, data=None):
+        calls.append((method, path, data))
+        if method == "GET":
+            return {"user": {"username": "alice", "is_favorite": True}}
+        return {"message": "updated", "is_favorite": False}
+
+    monkeypatch.setattr(ttfav, "_api_request", fake_api_request)
+    monkeypatch.setattr(ttfav, "_confirm_removal", lambda username: True)
+
+    assert run_ttfav(_config(tmp_path), tmp_path / "anywhere" / "alice") == 0
+    assert calls[-1] == (
+        "PUT",
+        "/api/users/alice/favorite",
+        {"is_favorite": False},
     )
 
-    assert exit_code == 0
-    assert _favorite_status(db_path, "alice") == 1
-    assert (fav_path / "alice").resolve() == (compressed_path / "alice").resolve()
-    assert "favorite enabled: alice" in capsys.readouterr().out
+
+def test_run_ttfav_rejects_invalid_username_before_api_call(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    def unexpected_api_request(*args, **kwargs):
+        raise AssertionError("API must not be called for an invalid username")
+
+    monkeypatch.setattr(ttfav, "_api_request", unexpected_api_request)
+
+    assert run_ttfav(
+        _config(tmp_path),
+        tmp_path / "mount" / "recordings" / "invalid!",
+    ) == 1
+
+
+def test_run_ttfav_reports_user_missing_from_server_database(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    def missing_user(*args, **kwargs):
+        raise RuntimeError("User not found")
+
+    monkeypatch.setattr(ttfav, "_api_request", missing_user)
+
+    assert run_ttfav(
+        _config(tmp_path),
+        tmp_path / "mount" / "recordings" / "alice",
+    ) == 1
+    assert "ttfav failed for alice: User not found" in capsys.readouterr().out
 
 
 def test_install_tt_tools_runs_as_direct_script(tmp_path: Path) -> None:
@@ -217,6 +247,7 @@ persistent_live_system:
         [
             "uv", "run", "python", "scripts/install_tt_tools.py",
             "--config", str(config_path),
+            "--api-url", "http://192.168.100.201:5001/",
         ],
         cwd=Path(__file__).resolve().parent.parent,
         env=env,
@@ -241,7 +272,53 @@ persistent_live_system:
     assert installed_config_path.exists()
     with installed_config_path.open(encoding="utf-8") as config_file:
         installed_config = json.load(config_file)
+    assert installed_config["api_url"] == "http://192.168.100.201:5001"
     assert installed_config["favorite_source_path"] == str(favorite_source)
     assert installed_config["db_path"] == str(
         tmp_path / "deployment" / "db.sqlite"
     )
+
+
+def test_install_tt_tools_remote_mode_does_not_touch_recording_paths(
+    tmp_path: Path,
+) -> None:
+    env = os.environ.copy()
+    env["HOME"] = str(tmp_path / "home")
+    config_path = tmp_path / "config.yaml"
+    config_path.write_text(
+        """
+paths:
+  recordings_path: /proc/ttracker-remote/recordings
+  recordings_fav_path: /proc/ttracker-remote/recordings_fav
+  inactive_users_path: /proc/ttracker-remote/inactive
+database:
+  path: /proc/ttracker-remote/db.sqlite
+persistent_live_system:
+  compressed_output_path: /proc/ttracker-remote/compressed
+""",
+        encoding="utf-8",
+    )
+
+    result = subprocess.run(
+        [
+            "uv", "run", "python", "scripts/install_tt_tools.py",
+            "--config", str(config_path),
+            "--api-tools-only",
+            "--api-url", "http://192.168.100.201:5001",
+        ],
+        cwd=Path(__file__).resolve().parent.parent,
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
+
+    assert result.returncode == 0, result.stderr
+    bin_dir = tmp_path / "home" / ".local" / "bin"
+    assert (bin_dir / "ttfav").is_file()
+    assert (bin_dir / "ttdel").is_file()
+    assert not (bin_dir / "fav-mtime").exists()
+    installed_config = json.loads(
+        (tmp_path / "home" / ".config" / "ttracker" / "fav.json").read_text()
+    )
+    assert installed_config["api_url"] == "http://192.168.100.201:5001"
