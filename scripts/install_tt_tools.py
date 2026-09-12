@@ -110,7 +110,7 @@ def main(argv=None) -> int:
         "--api-url",
         help=(
             "Web monitor URL used by ttfav and ttdel (for example "
-            "http://192.168.100.201:5001); overrides web_monitor.api_url"
+            "http://tracker.example:5001); overrides web_monitor.api_url"
         ),
     )
     parser.add_argument(

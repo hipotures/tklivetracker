@@ -100,7 +100,7 @@ web_monitor:
   port: 5001
   # URL used by helper commands installed on another machine. Override it at
   # install time with: install_tt_tools.py --api-url http://SERVER:5001
-  # api_url: http://192.168.1.10:5001
+  # api_url: http://tracker.example:5001
   # Add exact HTTPS origins only when a trusted reverse proxy exposes the UI.
   # Forwarded headers are deliberately ignored by default.
   allowed_origins: []

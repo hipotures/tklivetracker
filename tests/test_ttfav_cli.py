@@ -8,7 +8,7 @@ from scripts.ttfav import TtFavConfig, run_ttfav
 
 
 def _config(tmp_path: Path) -> TtFavConfig:
-    return TtFavConfig(api_url="http://192.168.100.201:5001")
+    return TtFavConfig(api_url="http://tracker.example:5001")
 
 
 def test_run_ttfav_uses_api_from_exported_recordings_path(
@@ -33,13 +33,13 @@ def test_run_ttfav_uses_api_from_exported_recordings_path(
     assert exit_code == 0
     assert calls == [
         (
-            "http://192.168.100.201:5001",
+            "http://tracker.example:5001",
             "GET",
             "/api/users/alice",
             None,
         ),
         (
-            "http://192.168.100.201:5001",
+            "http://tracker.example:5001",
             "PUT",
             "/api/users/alice/favorite",
             {"is_favorite": True},
@@ -247,7 +247,7 @@ persistent_live_system:
         [
             "uv", "run", "python", "scripts/install_tt_tools.py",
             "--config", str(config_path),
-            "--api-url", "http://192.168.100.201:5001/",
+            "--api-url", "http://tracker.example:5001/",
         ],
         cwd=Path(__file__).resolve().parent.parent,
         env=env,
@@ -272,7 +272,7 @@ persistent_live_system:
     assert installed_config_path.exists()
     with installed_config_path.open(encoding="utf-8") as config_file:
         installed_config = json.load(config_file)
-    assert installed_config["api_url"] == "http://192.168.100.201:5001"
+    assert installed_config["api_url"] == "http://tracker.example:5001"
     assert installed_config["favorite_source_path"] == str(favorite_source)
     assert installed_config["db_path"] == str(
         tmp_path / "deployment" / "db.sqlite"
@@ -289,7 +289,7 @@ def test_install_tt_tools_remote_mode_does_not_touch_recording_paths(
         [
             "uv", "run", "python", "scripts/install_tt_tools.py",
             "--api-tools-only",
-            "--api-url", "http://192.168.100.201:5001",
+            "--api-url", "http://tracker.example:5001",
         ],
         cwd=Path(__file__).resolve().parent.parent,
         env=env,
@@ -306,5 +306,5 @@ def test_install_tt_tools_remote_mode_does_not_touch_recording_paths(
     installed_config = json.loads(
         (tmp_path / "home" / ".config" / "ttracker" / "fav.json").read_text()
     )
-    assert installed_config["api_url"] == "http://192.168.100.201:5001"
+    assert installed_config["api_url"] == "http://tracker.example:5001"
     assert set(installed_config) == {"api_url"}

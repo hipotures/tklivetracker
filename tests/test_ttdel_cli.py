@@ -5,7 +5,7 @@ from scripts.ttdel import ApiError, TtDelConfig, run_ttdel
 
 
 def _config() -> TtDelConfig:
-    return TtDelConfig(api_url="http://192.168.100.201:5001")
+    return TtDelConfig(api_url="http://tracker.example:5001")
 
 
 def test_ttdel_deactivates_confirmed_user_through_api(
@@ -38,13 +38,13 @@ def test_ttdel_deactivates_confirmed_user_through_api(
     assert exit_code == 0
     assert calls == [
         (
-            "http://192.168.100.201:5001",
+            "http://tracker.example:5001",
             "GET",
             "/api/users/alice",
             None,
         ),
         (
-            "http://192.168.100.201:5001",
+            "http://tracker.example:5001",
             "POST",
             "/api/users/alice/deactivate",
             {},
