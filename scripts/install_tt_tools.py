@@ -104,7 +104,7 @@ def main(argv=None) -> int:
         "--config",
         type=Path,
         default=PROJECT_ROOT / "config.yaml",
-        help="Path to config.yaml (default: project config.yaml)",
+        help="Path to config.yaml for a full installation (default: project config.yaml)",
     )
     parser.add_argument(
         "--api-url",
@@ -120,17 +120,21 @@ def main(argv=None) -> int:
     )
     args = parser.parse_args(argv)
     project_root = PROJECT_ROOT
-    config_path = Path(absolute_config_path(args.config))
-    config = _build_tools_config(
-        project_root,
-        _load_project_config(project_root, config_path),
-        config_path.parent,
-        api_url=args.api_url,
-    )
+    if args.api_tools_only:
+        if not args.api_url:
+            parser.error("--api-tools-only requires --api-url")
+        config = {"api_url": _normalize_api_url(args.api_url)}
+    else:
+        config_path = Path(absolute_config_path(args.config))
+        config = _build_tools_config(
+            project_root,
+            _load_project_config(project_root, config_path),
+            config_path.parent,
+            api_url=args.api_url,
+        )
 
     bin_dir = Path.home() / ".local" / "bin"
     config_dir = Path.home() / ".config" / "ttracker"
-    recordings_fav_dir = Path(config["recordings_fav_path"])
     bin_dir.mkdir(parents=True, exist_ok=True)
     config_dir.mkdir(parents=True, exist_ok=True)
 
@@ -141,7 +145,6 @@ def main(argv=None) -> int:
     destination_ttdel_script = bin_dir / "ttdel"
     legacy_fav_script = bin_dir / "fav"
     destination_mtime_script = bin_dir / "fav-mtime"
-    local_mtime_script = recordings_fav_dir / "fav-mtime"
     destination_config = config_dir / "fav.json"
 
     shutil.copy2(source_ttfav_script, destination_ttfav_script)
@@ -150,6 +153,8 @@ def main(argv=None) -> int:
     destination_ttdel_script.chmod(0o755)
     removed_legacy_fav = False
     if not args.api_tools_only:
+        recordings_fav_dir = Path(config["recordings_fav_path"])
+        local_mtime_script = recordings_fav_dir / "fav-mtime"
         recordings_fav_dir.mkdir(parents=True, exist_ok=True)
         removed_legacy_fav = legacy_fav_script.exists() or legacy_fav_script.is_symlink()
         if removed_legacy_fav:

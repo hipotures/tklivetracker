@@ -113,7 +113,7 @@ The optional folder-oriented helpers are installed into `~/.local/bin`:
 uv run python scripts/install_tt_tools.py --help
 uv run python scripts/install_tt_tools.py --config config.yaml
 # For a recordings export mounted on another machine:
-uv run python scripts/install_tt_tools.py --config config.yaml \
+uv run python scripts/install_tt_tools.py \
   --api-tools-only --api-url http://TRACKER-SERVER:5001
 ```
 

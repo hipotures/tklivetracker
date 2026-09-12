@@ -284,25 +284,10 @@ def test_install_tt_tools_remote_mode_does_not_touch_recording_paths(
 ) -> None:
     env = os.environ.copy()
     env["HOME"] = str(tmp_path / "home")
-    config_path = tmp_path / "config.yaml"
-    config_path.write_text(
-        """
-paths:
-  recordings_path: /proc/ttracker-remote/recordings
-  recordings_fav_path: /proc/ttracker-remote/recordings_fav
-  inactive_users_path: /proc/ttracker-remote/inactive
-database:
-  path: /proc/ttracker-remote/db.sqlite
-persistent_live_system:
-  compressed_output_path: /proc/ttracker-remote/compressed
-""",
-        encoding="utf-8",
-    )
 
     result = subprocess.run(
         [
             "uv", "run", "python", "scripts/install_tt_tools.py",
-            "--config", str(config_path),
             "--api-tools-only",
             "--api-url", "http://192.168.100.201:5001",
         ],
@@ -322,3 +307,4 @@ persistent_live_system:
         (tmp_path / "home" / ".config" / "ttracker" / "fav.json").read_text()
     )
     assert installed_config["api_url"] == "http://192.168.100.201:5001"
+    assert set(installed_config) == {"api_url"}
