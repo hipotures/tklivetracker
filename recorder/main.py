@@ -217,6 +217,12 @@ def main():
                 ffmpeg_remux=args.ffmpeg_remux,  # Pass FFmpeg remux flag
                 segment_on_reconnect=args.segment_on_reconnect,
                 config_path=args.config_path,
+                require_video=args.require_video,
+                video_start_timeout=args.video_start_timeout,
+                video_stall_timeout=args.video_stall_timeout,
+                max_video_url_attempts=args.max_video_url_attempts,
+                log_audio_only_events=args.log_audio_only_events,
+                supervisor_log_path=args.supervisor_log_path,
             )
 
             # Handle persistent mode setup

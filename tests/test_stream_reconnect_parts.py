@@ -1,6 +1,7 @@
 import logging
 from pathlib import Path
 
+from persistent_live_manager.live_process_manager import LiveProcessManager
 from persistent_live_manager.recording_health_monitor import RecordingHealthMonitor
 from recorder.core.tiktok_recorder import TikTokRecorder
 from recorder.utils.stream_parts import stream_part_path
@@ -142,12 +143,59 @@ class RefreshedCdnTikTok:
         return ["https://refreshed-cdn/stream.flv"]
 
 
+def flv_tag(tag_type, payload=b"x"):
+    tag_header = bytes([tag_type]) + len(payload).to_bytes(3, "big") + b"\0" * 7
+    previous_tag_size = (11 + len(payload)).to_bytes(4, "big")
+    return tag_header + payload + previous_tag_size
+
+
+def flv_stream(flags, *tag_types):
+    header = b"FLV\x01" + bytes([flags]) + (9).to_bytes(4, "big") + b"\0" * 4
+    return header + b"".join(flv_tag(tag_type) for tag_type in tag_types)
+
+
+class AudioOnlyThenVideoTikTok:
+    def __init__(self):
+        self.live_checks = iter((True, True, False))
+        self.download_urls = []
+
+    def is_room_alive(self, _room_id):
+        return next(self.live_checks)
+
+    def download_live_stream(self, live_url, _stop_event):
+        self.download_urls.append(live_url)
+        if "audio" in live_url:
+            yield flv_stream(0x04, 8)
+            return
+        yield flv_stream(0x05, 8, 9)
+
+
+class AudioOnlyTikTok:
+    def __init__(self):
+        self.download_urls = []
+
+    def is_room_alive(self, _room_id):
+        return True
+
+    def download_live_stream(self, live_url, _stop_event):
+        self.download_urls.append(live_url)
+        yield flv_stream(0x04, 8)
+
+
 def make_recorder(tiktok, segment_on_reconnect=True):
     recorder = TikTokRecorder.__new__(TikTokRecorder)
     recorder.tiktok = tiktok
+    recorder.user = "example_user"
     recorder.room_id = "room"
     recorder.duration = None
     recorder.segment_on_reconnect = segment_on_reconnect
+    recorder.require_video = True
+    recorder.video_start_timeout = 10
+    recorder.video_stall_timeout = 30
+    recorder.max_video_url_attempts = 5
+    recorder.log_audio_only_events = True
+    recorder.supervisor_log_path = None
+    recorder.audio_only_restart_count = 0
     recorder._stop_requested = ImmediateStopEvent()
     recorder.use_telegram = False
     recorder.no_stream_data = False
@@ -368,6 +416,65 @@ def test_successful_stream_eof_refreshes_url_before_reconnect(tmp_path, caplog):
     assert "[STREAM_URL] refreshed after stream EOF changed=True" in caplog.text
 
 
+def test_audio_only_candidate_is_discarded_before_video_candidate(tmp_path, caplog):
+    output = tmp_path / "recording.mp4"
+    supervisor_log = tmp_path / "supervisor.log"
+    tiktok = AudioOnlyThenVideoTikTok()
+    recorder = make_recorder(tiktok)
+    recorder.supervisor_log_path = str(supervisor_log)
+    candidates = [
+        "https://audio-cdn/stream.flv",
+        "https://video-cdn/stream.flv",
+    ]
+
+    with caplog.at_level(logging.INFO, logger="logger"):
+        recorder._record_raw_stream(
+            candidates[0],
+            str(output),
+            buffer_size=1024,
+            buffer=bytearray(),
+            stop_recording=False,
+            live_url_candidates=candidates,
+        )
+
+    part_one = Path(stream_part_path(str(output), 1))
+    assert tiktok.download_urls == candidates
+    assert part_one.read_bytes() == flv_stream(0x05, 8, 9)
+    assert not (tmp_path / "recording_part002.mp4").exists()
+    assert recorder.audio_only_restart_count == 1
+    assert "[AUDIO_ONLY_STREAM]" in caplog.text
+    assert "[VIDEO_RECOVERED]" in caplog.text
+    assert "[AUDIO_ONLY_STREAM]" in supervisor_log.read_text()
+    assert "[VIDEO_RECOVERED]" in supervisor_log.read_text()
+
+
+def test_audio_only_recovery_attempts_are_bounded(tmp_path, caplog):
+    output = tmp_path / "recording.mp4"
+    tiktok = AudioOnlyTikTok()
+    recorder = make_recorder(tiktok)
+    recorder.max_video_url_attempts = 2
+    candidates = [
+        "https://audio-cdn-1/stream.flv",
+        "https://audio-cdn-2/stream.flv",
+    ]
+
+    with caplog.at_level(logging.WARNING, logger="logger"):
+        recorder._record_raw_stream(
+            candidates[0],
+            str(output),
+            buffer_size=1024,
+            buffer=bytearray(),
+            stop_recording=False,
+            live_url_candidates=candidates,
+        )
+
+    assert tiktok.download_urls == candidates
+    assert recorder.audio_only_restart_count == 2
+    assert recorder.no_stream_data is True
+    assert not Path(stream_part_path(str(output), 1)).exists()
+    assert "[VIDEO_RECOVERY_EXHAUSTED]" in caplog.text
+
+
 def test_disabled_option_preserves_single_file_behavior(tmp_path):
     output = tmp_path / "recording.mp4"
     recorder = make_recorder(
@@ -413,6 +520,47 @@ def test_health_progress_supports_legacy_base_and_parts(tmp_path):
     size, _mtime = monitor._recording_file_progress(str(output))
 
     assert size == len(b"legacy-firstlegacy-second")
+
+
+def test_health_monitor_detects_audio_only_latest_flv_part(tmp_path):
+    output = tmp_path / "recording.mp4"
+    first_part = Path(stream_part_path(str(output), 1))
+    second_part = Path(stream_part_path(str(output), 2))
+    first_part.write_bytes(flv_stream(0x05, 8, 9))
+    second_part.write_bytes(flv_stream(0x04, 8))
+    monitor = RecordingHealthMonitor(
+        metadata_store=object(),
+        config={"segment_on_reconnect": True, "require_video": True},
+    )
+
+    assert monitor._audio_only_flv_path(str(output)) == str(second_part)
+
+
+def test_process_manager_passes_video_protection_config_to_recorder(tmp_path):
+    manager = LiveProcessManager(
+        metadata_store=object(),
+        config={
+            "recordings_path": str(tmp_path),
+            "require_video": False,
+            "video_start_timeout": 12,
+            "video_stall_timeout": 45,
+            "max_video_url_attempts": 7,
+            "log_audio_only_events": False,
+        },
+    )
+
+    command = manager._build_recording_command(
+        "example_user",
+        "room",
+        tmp_path,
+        tmp_path / "recording.mp4",
+    )
+
+    assert "--allow-audio-only" in command
+    assert command[command.index("--video-start-timeout") + 1] == "12.0"
+    assert command[command.index("--video-stall-timeout") + 1] == "45.0"
+    assert command[command.index("--max-video-url-attempts") + 1] == "7"
+    assert "--no-audio-only-event-log" in command
 
 
 def test_part_suffix_is_added_after_a_username_containing_part_text():

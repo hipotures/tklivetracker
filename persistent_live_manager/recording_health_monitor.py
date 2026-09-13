@@ -23,6 +23,7 @@ sys.path.insert(0, str(project_root))
 # Import UserContextLogger for username-prefixed logging
 from utils.user_context_logger import UserContextLogger
 from utils.config_paths import resolve_path
+from recorder.utils.flv_video import flv_header_has_video
 from recorder.utils.stream_parts import existing_stream_parts, stream_part_path
 
 from .process_metadata_store import ProcessMetadataStore, ProcessInfo
@@ -89,6 +90,7 @@ class RecordingHealthMonitor:
             'untracked_startup_grace_seconds', 10
         )
         self.segment_on_reconnect = config.get('segment_on_reconnect', False)
+        self.require_video = config.get('require_video', True)
         self.recorder_log_path = Path(
             config.get('recorder_log_path', '/tmp/tiktok_live_logs')
         )
@@ -112,6 +114,7 @@ class RecordingHealthMonitor:
             'processes_restarted': 0,
             'unhealthy_processes_found': 0,
             'file_size_issues_detected': 0,
+            'audio_only_streams_detected': 0,
             'dead_processes_found': 0,
             'untracked_processes_found': 0,
             'duplicate_recorders_found': 0,
@@ -551,6 +554,15 @@ class RecordingHealthMonitor:
             current_size = progress[0]
             process_id = process_info.id
 
+            if self.require_video:
+                audio_only_path = self._audio_only_flv_path(file_path)
+                if audio_only_path is not None:
+                    issues.append(
+                        "[AUDIO_ONLY_STREAM] Latest FLV segment declares no "
+                        f"video track: {audio_only_path}"
+                    )
+                    self.stats['audio_only_streams_detected'] += 1
+
             # Check file growth (compare with previous size)
             if process_id in self.last_file_sizes:
                 previous_size = self.last_file_sizes[process_id]
@@ -568,6 +580,24 @@ class RecordingHealthMonitor:
             self.logger.error(f"Error checking file health for {file_path}: {e}")
 
         return issues
+
+    def _audio_only_flv_path(self, file_path: str) -> Optional[str]:
+        """Return the newest exact segment when its FLV header has no video."""
+        paths = (
+            tuple(existing_stream_parts(file_path))
+            if self.segment_on_reconnect
+            else (file_path,)
+        )
+        for path in reversed(paths):
+            try:
+                with open(path, "rb") as recording_file:
+                    header = recording_file.read(9)
+            except OSError:
+                continue
+            if flv_header_has_video(header) is False:
+                return path
+            return None
+        return None
 
     def _recording_file_progress(self, file_path: str) -> Optional[Tuple[int, float]]:
         """Return combined size and latest mtime for the exact reconnect parts."""

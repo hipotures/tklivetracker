@@ -167,6 +167,46 @@ def parse_args():
     )
 
     parser.add_argument(
+        "--allow-audio-only",
+        dest="require_video",
+        action="store_false",
+        default=True,
+        help="Allow FLV streams without video instead of switching media URLs."
+    )
+
+    parser.add_argument(
+        "--video-start-timeout",
+        dest="video_start_timeout",
+        type=float,
+        default=10.0,
+        help="Seconds to wait for the first FLV video tag [Default: 10]."
+    )
+
+    parser.add_argument(
+        "--video-stall-timeout",
+        dest="video_stall_timeout",
+        type=float,
+        default=30.0,
+        help="Seconds of audio without FLV video before switching URL [Default: 30]."
+    )
+
+    parser.add_argument(
+        "--max-video-url-attempts",
+        dest="max_video_url_attempts",
+        type=int,
+        default=5,
+        help="Consecutive video-less media candidates allowed [Default: 5]."
+    )
+
+    parser.add_argument(
+        "--no-audio-only-event-log",
+        dest="log_audio_only_events",
+        action="store_false",
+        default=True,
+        help="Do not copy audio-only recovery events to the supervisor log."
+    )
+
+    parser.add_argument(
         "--metadata-path",
         dest="metadata_path",
         help="Internal use: Publish completed recording metadata in this directory.",
@@ -209,6 +249,13 @@ def validate_and_parse_args():
 
     if args.url and not re.match(str(Regex.IS_TIKTOK_LIVE), args.url):
         raise ArgsParseError("The provided URL does not appear to be a valid TikTok live URL.")
+
+    if args.video_start_timeout <= 0:
+        raise ArgsParseError("--video-start-timeout must be greater than zero.")
+    if args.video_stall_timeout <= 0:
+        raise ArgsParseError("--video-stall-timeout must be greater than zero.")
+    if args.max_video_url_attempts <= 0:
+        raise ArgsParseError("--max-video-url-attempts must be greater than zero.")
 
     # Allow user + room_id combination in persistent mode for better performance
     if not args.persistent_mode:

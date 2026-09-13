@@ -10,7 +10,16 @@ from ..utils.logger_manager import logger # Relative import (up one level)
 from ..utils.custom_exceptions import UserLiveException, \
     TikTokException # Relative import (up one level)
 from ..utils.enums import Mode, TikTokError # Relative import (up one level)
+from ..utils.flv_video import FLVVideoMonitor
 from ..utils.stream_parts import stream_part_path
+
+
+class VideoStreamUnavailable(ConnectionError):
+    """A media candidate did not provide a usable video track."""
+
+    def __init__(self, issue: str):
+        super().__init__(issue)
+        self.issue = issue
 
 
 class TikTokRecorder:
@@ -19,7 +28,10 @@ class TikTokRecorder:
                 'output', 'use_telegram', 'is_exact_file_path', 'ffmpeg_remux',
                 'segment_on_reconnect', 'tiktok_stream_id', 'tiktok_started_at',
                 'tiktok_owner_user_id', '_stop_requested', 'no_stream_data',
-                'config_path')
+                'config_path', 'require_video', 'video_start_timeout',
+                'video_stall_timeout', 'max_video_url_attempts',
+                'log_audio_only_events', 'supervisor_log_path',
+                'audio_only_restart_count')
 
     # Constants for dynamic sleep in automatic mode
     INITIAL_SLEEP_DURATION = 1
@@ -29,6 +41,7 @@ class TikTokRecorder:
     CONNECTION_ERROR_SLEEP = 60 # Sleep duration after connection errors
     STREAM_FAILURES_BEFORE_URL_REFRESH = 3
     MAX_INITIAL_STREAM_URL_REFRESHES = 3
+    MAX_PENDING_VIDEO_BYTES = 8 * 1024 * 1024
 
     def _upload_to_telegram(self, output: str) -> None:
         from ..upload.telegram import Telegram
@@ -50,6 +63,12 @@ class TikTokRecorder:
         ffmpeg_remux=False,
         segment_on_reconnect=False,
         config_path="config.yaml",
+        require_video=True,
+        video_start_timeout=10.0,
+        video_stall_timeout=30.0,
+        max_video_url_attempts=5,
+        log_audio_only_events=True,
+        supervisor_log_path=None,
     ):
         # Setup TikTok API client
         # Use the imported class directly
@@ -70,6 +89,13 @@ class TikTokRecorder:
         self.is_exact_file_path = is_exact_file_path
         self.ffmpeg_remux = ffmpeg_remux
         self.segment_on_reconnect = segment_on_reconnect
+        self.require_video = require_video
+        self.video_start_timeout = float(video_start_timeout)
+        self.video_stall_timeout = float(video_stall_timeout)
+        self.max_video_url_attempts = int(max_video_url_attempts)
+        self.log_audio_only_events = log_audio_only_events
+        self.supervisor_log_path = supervisor_log_path
+        self.audio_only_restart_count = 0
 
         # Upload Settings
         self.use_telegram = use_telegram
@@ -160,6 +186,27 @@ class TikTokRecorder:
         """
         logger.info(f"🛑 Stop requested for user {self.user}")
         self._stop_requested.set()
+
+    def _log_video_event(self, level: str, message: str) -> None:
+        """Log media recovery events to recorder output and the supervisor log."""
+        getattr(logger, level)(message)
+        if (
+            not getattr(self, 'log_audio_only_events', True)
+            or not getattr(self, 'supervisor_log_path', None)
+        ):
+            return
+
+        try:
+            timestamp = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
+            with open(self.supervisor_log_path, "a", encoding="utf-8") as log_file:
+                log_file.write(
+                    f"{timestamp} [REC] {level.upper()} "
+                    f"[{self.user}] {message}\n"
+                )
+        except OSError as error:
+            logger.debug(
+                f"Could not append video event to supervisor log: {error}"
+            )
 
     def start_recording(self) -> float:
         """
@@ -289,6 +336,9 @@ class TikTokRecorder:
         part_completed = False
         consecutive_connection_failures = 0
         initial_stream_url_refreshes = 0
+        consecutive_video_failures = 0
+        awaiting_video_recovery = False
+        self.audio_only_restart_count = 0
         candidate_urls = []
         for candidate in live_url_candidates or [live_url]:
             if candidate and candidate not in candidate_urls:
@@ -408,6 +458,12 @@ class TikTokRecorder:
         try:
             while not stop_recording and not self._stop_requested.is_set():
                 connection_had_data = False
+                connection_received_data = False
+                pending_connection_data = bytearray()
+                video_monitor = FLVVideoMonitor(
+                    getattr(self, 'video_start_timeout', 10.0),
+                    getattr(self, 'video_stall_timeout', 30.0),
+                )
                 try:
                     # Check if user is still live at the beginning of each inner loop iteration
                     if not self.tiktok.is_room_alive(self.room_id):
@@ -432,6 +488,27 @@ class TikTokRecorder:
                                  stop_recording = True
                             break # Exit for loop, re-check in while
 
+                        connection_received_data = True
+                        if getattr(self, 'require_video', True):
+                            video_issue = video_monitor.feed(chunk)
+                            if not connection_had_data:
+                                pending_connection_data.extend(chunk)
+                                if (
+                                    video_issue is None
+                                    and not video_monitor.validated
+                                    and len(pending_connection_data)
+                                    >= self.MAX_PENDING_VIDEO_BYTES
+                                ):
+                                    video_issue = 'video_probe_limit'
+                                if video_issue is not None:
+                                    raise VideoStreamUnavailable(video_issue)
+                                if not video_monitor.validated:
+                                    continue
+                                chunk = bytes(pending_connection_data)
+                                pending_connection_data.clear()
+                            elif video_issue is not None:
+                                raise VideoStreamUnavailable(video_issue)
+
                         first_chunk = not connection_had_data
                         if self.segment_on_reconnect and part_completed and first_chunk:
                             part_number += 1
@@ -440,6 +517,25 @@ class TikTokRecorder:
 
                         connection_had_data = True
                         consecutive_connection_failures = 0
+                        if awaiting_video_recovery:
+                            if video_monitor.video_seen:
+                                recovery_message = (
+                                    f"[VIDEO_RECOVERED] @{self.user}: "
+                                    f"candidate={candidate_index + 1}/"
+                                    f"{len(candidate_urls)} part={part_number} "
+                                    f"audio_only_restarts="
+                                    f"{self.audio_only_restart_count}"
+                                )
+                            else:
+                                recovery_message = (
+                                    f"[VIDEO_CANDIDATE_ACCEPTED] @{self.user}: "
+                                    f"candidate={candidate_index + 1}/"
+                                    f"{len(candidate_urls)} format=non-FLV "
+                                    f"video_check=unsupported"
+                                )
+                            self._log_video_event('info', recovery_message)
+                            awaiting_video_recovery = False
+                        consecutive_video_failures = 0
                         if recording_start_time == 0:
                             recording_start_time = time.time()
                         buffer.extend(chunk)
@@ -457,6 +553,17 @@ class TikTokRecorder:
                             break # Exit for loop
                     else:
                         stream_reached_eof = True
+
+                    if (
+                        getattr(self, 'require_video', True)
+                        and connection_received_data
+                        and not connection_had_data
+                        and not stop_recording
+                        and not self._stop_requested.is_set()
+                    ):
+                        video_issue = video_monitor.issue_at_eof()
+                        if video_issue is not None:
+                            raise VideoStreamUnavailable(video_issue)
 
                     # If the for loop finished without break (stream ended?), check live status again
                     if not stop_recording and not self.tiktok.is_room_alive(self.room_id):
@@ -478,6 +585,51 @@ class TikTokRecorder:
                                 continue
                             elif self._stop_requested.wait(timeout=5):
                                 stop_recording = True
+
+                except VideoStreamUnavailable as error:
+                    consecutive_video_failures += 1
+                    if error.issue == 'audio_only':
+                        self.audio_only_restart_count += 1
+                    awaiting_video_recovery = True
+                    max_video_attempts = getattr(
+                        self, 'max_video_url_attempts', 5
+                    )
+                    recovery_exhausted = (
+                        consecutive_video_failures >= max_video_attempts
+                    )
+                    marker = {
+                        'audio_only': 'AUDIO_ONLY_STREAM',
+                        'video_stalled': 'VIDEO_STALLED',
+                        'invalid_flv': 'VIDEO_INVALID_FLV',
+                    }.get(error.issue, 'VIDEO_MISSING')
+                    self._log_video_event(
+                        'warning',
+                        f"[{marker}] @{self.user}: "
+                        f"candidate={candidate_index + 1}/{len(candidate_urls)} "
+                        f"part={part_number} issue={error.issue} "
+                        f"attempt={consecutive_video_failures}/"
+                        f"{max_video_attempts} action="
+                        f"{'stop_recorder' if recovery_exhausted else 'switch_url'}",
+                    )
+
+                    if recovery_exhausted:
+                        if recording_start_time == 0:
+                            self.no_stream_data = True
+                            logger.warning(
+                                "[NO_STREAM_DATA] Recorder exhausted video "
+                                "candidates without receiving video"
+                            )
+                        self._log_video_event(
+                            'warning',
+                            f"[VIDEO_RECOVERY_EXHAUSTED] @{self.user}: "
+                            f"attempts={consecutive_video_failures} "
+                            "action=stop_recorder",
+                        )
+                        stop_recording = True
+                        break
+
+                    refresh_stream_url(f"after {error.issue}")
+                    continue
 
                 except (ConnectionError, RequestException, HTTPException) as e:
                     consecutive_connection_failures += 1

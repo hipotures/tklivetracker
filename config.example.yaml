@@ -38,6 +38,13 @@ persistent_live_system:
   shutdown_delay_between_processes: 1
   no_stream_data_retry_cooldown: 300
   segment_on_reconnect: false
+  # Reject FLV media candidates that contain audio but no video. Events are
+  # copied to the supervisor log so they are visible while monitoring it.
+  require_video: true
+  video_start_timeout: 10
+  video_stall_timeout: 30
+  max_video_url_attempts: 5
+  log_audio_only_events: true
   metadata_enabled: false
   compressed_output_path: ./recordings
   lock_file_path: ./supervisor.lock

@@ -78,6 +78,21 @@ class LiveProcessManager:
         self.cookie_file_path = config.get('cookie_file_path', None)
         self.config_path = config.get('config_path')
         self.segment_on_reconnect = config.get('segment_on_reconnect', False)
+        self.require_video = config.get('require_video', True)
+        self.video_start_timeout = float(config.get('video_start_timeout', 10))
+        self.video_stall_timeout = float(config.get('video_stall_timeout', 30))
+        self.max_video_url_attempts = int(
+            config.get('max_video_url_attempts', 5)
+        )
+        self.log_audio_only_events = config.get(
+            'log_audio_only_events', True
+        )
+        if self.video_start_timeout <= 0:
+            raise ValueError("video_start_timeout must be greater than zero")
+        if self.video_stall_timeout <= 0:
+            raise ValueError("video_stall_timeout must be greater than zero")
+        if self.max_video_url_attempts <= 0:
+            raise ValueError("max_video_url_attempts must be greater than zero")
         self.metadata_enabled = config.get('metadata_enabled', False)
         self.no_stream_data_retry_cooldown = float(
             config.get('no_stream_data_retry_cooldown', 300)
@@ -547,6 +562,19 @@ class LiveProcessManager:
 
         if self.segment_on_reconnect:
             cmd.append("--segment-on-reconnect")
+
+        if not self.require_video:
+            cmd.append("--allow-audio-only")
+        cmd.extend([
+            "--video-start-timeout",
+            str(self.video_start_timeout),
+            "--video-stall-timeout",
+            str(self.video_stall_timeout),
+            "--max-video-url-attempts",
+            str(self.max_video_url_attempts),
+        ])
+        if not self.log_audio_only_events:
+            cmd.append("--no-audio-only-event-log")
 
         if self.metadata_enabled:
             cmd.extend([
