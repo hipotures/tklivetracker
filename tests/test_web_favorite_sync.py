@@ -198,3 +198,48 @@ def test_delete_user_endpoint_removes_favorite_symlink(tmp_path: Path) -> None:
     assert response.status_code == 200
     assert not (fav_path / "alice").is_symlink()
     assert not (recordings_path / "alice").exists()
+
+
+def test_favorite_update_endpoint_syncs_only_target_user(tmp_path: Path) -> None:
+    db_path = tmp_path / "users.db"
+    recordings_path = tmp_path / "recordings"
+    fav_path = tmp_path / "recordings_fav"
+    (recordings_path / "alice").mkdir(parents=True)
+    fav_path.mkdir()
+    orphan_link = fav_path / "orphan_user"
+    orphan_link.symlink_to(
+        recordings_path / "orphan_user",
+        target_is_directory=True,
+    )
+    _create_web_favorite_db(db_path, favorite=0)
+
+    response = _app_with_paths(db_path, recordings_path, fav_path).test_client().put(
+        "/api/users/alice/favorite",
+        json={"is_favorite": True},
+    )
+
+    assert response.status_code == 200
+    assert (fav_path / "alice").is_symlink()
+    assert orphan_link.is_symlink()
+
+
+def test_explicit_full_sync_removes_orphan_links(tmp_path: Path) -> None:
+    db_path = tmp_path / "users.db"
+    recordings_path = tmp_path / "recordings"
+    fav_path = tmp_path / "recordings_fav"
+    recordings_path.mkdir()
+    fav_path.mkdir()
+    orphan_link = fav_path / "orphan_user"
+    orphan_link.symlink_to(
+        recordings_path / "orphan_user",
+        target_is_directory=True,
+    )
+    _create_web_favorite_db(db_path, favorite=0)
+
+    response = _app_with_paths(db_path, recordings_path, fav_path).test_client().post(
+        "/api/favorites/sync",
+    )
+
+    assert response.status_code == 200
+    assert response.get_json()["summary"] == "links removed: orphan_user"
+    assert not orphan_link.is_symlink()

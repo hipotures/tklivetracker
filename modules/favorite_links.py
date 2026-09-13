@@ -80,7 +80,25 @@ def sync_favorite_links(
     fav_root.mkdir(parents=True, exist_ok=True)
 
     report = SyncReport()
+    if (
+        username is not None
+        and normalize_tiktok_username(username, strip_at=False) != username
+    ):
+        report.conflicts.append(f"{username}: invalid TikTok username")
+        return report
+
     rows = _get_user_rows(conn, username)
+    if username is not None and not rows:
+        link_path = fav_root / username
+        if link_path.is_symlink():
+            _unlink_symlink(link_path)
+            report.removed.append(username)
+        elif link_path.exists():
+            report.conflicts.append(
+                f"{username}: {link_path} exists and is not a symlink"
+            )
+        return report
+
     valid_rows = []
     for row in rows:
         user = row["username"]

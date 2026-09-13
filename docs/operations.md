@@ -125,7 +125,9 @@ The current directory name is treated as the username and verified through the
 API, so no local recording path must match the server. `ttfav` (or `ttfav add`)
 adds a user who is not yet a favorite. If the user is already a favorite,
 `ttfav` asks for confirmation before removing it. `ttfav del` removes without
-the interactive question.
+the interactive question. Normal favorite changes synchronize only that user's
+server-side symlink. Run `ttfav --sync-all` explicitly to reconcile every
+favorite link and remove stale links.
 The web API must only be exposed on a trusted network because it has no built-in
 authentication. `ttdel` deactivates the current user and moves its recording
 directory on the server only when no active recorder is registered. It derives

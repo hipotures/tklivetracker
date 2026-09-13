@@ -206,3 +206,23 @@ def test_sync_favorite_links_does_not_use_invalid_database_username_as_path(tmp_
     assert report.added == []
     assert report.conflicts == ["../outside: invalid TikTok username"]
     assert not (tmp_path / "outside").exists()
+
+
+def test_scoped_sync_removes_link_for_user_missing_from_database(tmp_path: Path) -> None:
+    conn = _create_users_db(tmp_path / "users.db")
+    recordings_path = tmp_path / "recordings"
+    fav_path = tmp_path / "recordings_fav"
+    recordings_path.mkdir()
+    fav_path.mkdir()
+    link = fav_path / "deleted_user"
+    link.symlink_to(recordings_path / "deleted_user", target_is_directory=True)
+
+    report = sync_favorite_links(
+        conn,
+        recordings_path,
+        fav_path,
+        username="deleted_user",
+    )
+
+    assert not link.is_symlink()
+    assert report.removed == ["deleted_user"]

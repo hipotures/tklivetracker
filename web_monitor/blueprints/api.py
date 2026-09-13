@@ -75,7 +75,7 @@ def parse_boolean(value, field_name):
         return bool(value)
     raise ValueError(f'{field_name} must be a boolean')
 
-def sync_favorite_links_for_request(db):
+def sync_favorite_links_for_request(db, username=None):
     favorite_source_path = current_app.config.get('FAVORITE_SOURCE_PATH')
     recordings_fav_path = current_app.config.get('RECORDINGS_FAV_PATH')
 
@@ -86,7 +86,12 @@ def sync_favorite_links_for_request(db):
         current_app.logger.warning("Favorite link sync skipped: recordings paths are not configured")
         return None
 
-    report = sync_favorite_links(db, favorite_source_path, recordings_fav_path)
+    report = sync_favorite_links(
+        db,
+        favorite_source_path,
+        recordings_fav_path,
+        username=username,
+    )
     if report.has_changes():
         current_app.logger.info("Favorite link sync:\n%s", format_sync_report(report))
     else:
@@ -437,7 +442,7 @@ def deactivate_user(username):
             db.rollback()
             raise
 
-        sync_favorite_links_for_request(db)
+        sync_favorite_links_for_request(db, username=username)
         return jsonify({
             'message': f'User {username} deactivated successfully',
             'already_inactive': False,
@@ -504,7 +509,7 @@ def update_user(username):
                 state = 'enabled' if valid_updates['is_favorite'] else 'disabled'
                 current_app.logger.info("Favorite %s: %s", state, username)
             if 'is_favorite' in valid_updates or 'is_active' in valid_updates:
-                sync_favorite_links_for_request(db)
+                sync_favorite_links_for_request(db, username=username)
             return jsonify({'message': f'User {username} updated successfully'})
         else:
             return jsonify({'error': 'User not found'}), 404
@@ -555,7 +560,7 @@ def delete_user_endpoint(username):
             except OSError as e:
                 current_app.logger.warning(f"Could not delete directory {user_dir_path}: {e}")
 
-        sync_favorite_links_for_request(db)
+        sync_favorite_links_for_request(db, username=username)
 
         return jsonify({'message': f'User {username} deleted successfully'})
 
@@ -581,6 +586,31 @@ def get_favorites():
         current_app.logger.error(f"Get favorites error: {e}")
         return jsonify({'error': 'Internal server error'}), 500
 
+
+@api_bp.route('/favorites/sync', methods=['POST'])
+@require_write_access
+def sync_all_favorite_links():
+    """Explicitly reconcile all favorite links with the database."""
+    try:
+        report = sync_favorite_links_for_request(get_db())
+        if report is None:
+            return jsonify({'error': 'Favorite paths are not configured'}), 503
+        return jsonify({
+            'message': 'favorite links synchronized',
+            'summary': format_sync_report(report),
+            'changes': {
+                'added': report.added,
+                'removed': report.removed,
+                'fixed': report.fixed,
+                'conflicts': report.conflicts,
+                'missing_sources': report.missing_sources,
+            },
+        })
+    except Exception as error:
+        current_app.logger.error("Full favorite link sync failed: %s", error)
+        return jsonify({'error': 'Favorite link sync failed'}), 500
+
+
 @api_bp.route('/users/<username>/favorite', methods=['PUT'])
 @require_write_access
 def toggle_user_favorite(username):
@@ -600,7 +630,7 @@ def toggle_user_favorite(username):
         if success:
             state = 'enabled' if is_favorite else 'disabled'
             current_app.logger.info("Favorite %s: %s", state, username)
-            sync_favorite_links_for_request(db)
+            sync_favorite_links_for_request(db, username=username)
             action = 'added to' if is_favorite else 'removed from'
             return jsonify({
                 'message': f'User {username} {action} favorites',

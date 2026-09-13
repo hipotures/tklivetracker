@@ -177,6 +177,21 @@ def run_ttfav(
         return 1
 
 
+def sync_all_favorites(config: TtFavConfig) -> int:
+    try:
+        response = _api_request(config, "POST", "/api/favorites/sync")
+    except RuntimeError as exc:
+        print(f"ttfav full sync failed: {exc}")
+        return 1
+
+    message = response.get("message")
+    summary = response.get("summary")
+    print(message if isinstance(message, str) else "favorite links synchronized")
+    if isinstance(summary, str) and summary:
+        print(summary)
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Manage the current-directory TikTok user favorite through the web API."
@@ -195,12 +210,19 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Check the server state without asking or changing it",
     )
+    parser.add_argument(
+        "--sync-all",
+        action="store_true",
+        help="Explicitly reconcile all server-side favorite links",
+    )
     return parser
 
 
 def main() -> int:
     parser = build_parser()
     args = parser.parse_args()
+    if args.sync_all and (args.action is not None or args.dry_run):
+        parser.error("--sync-all cannot be combined with an action or --dry-run")
     config_path = Path(args.config).expanduser()
 
     if not config_path.exists():
@@ -213,6 +235,8 @@ def main() -> int:
     except (OSError, KeyError, ValueError, json.JSONDecodeError) as exc:
         print(f"invalid ttfav config: {exc}")
         return 2
+    if args.sync_all:
+        return sync_all_favorites(config)
     cwd = Path(os.environ.get("PWD", os.getcwd()))
     return run_ttfav(
         config,

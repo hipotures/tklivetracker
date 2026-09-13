@@ -218,6 +218,32 @@ def test_run_ttfav_reports_user_missing_from_server_database(
     assert "ttfav failed for alice: User not found" in capsys.readouterr().out
 
 
+def test_sync_all_favorites_uses_explicit_api_endpoint(monkeypatch, capsys) -> None:
+    calls = []
+
+    def fake_api_request(config, method, path, data=None):
+        calls.append((method, path, data))
+        return {
+            "message": "favorite links synchronized",
+            "summary": "links removed: stale_user",
+        }
+
+    monkeypatch.setattr(ttfav, "_api_request", fake_api_request)
+
+    assert ttfav.sync_all_favorites(_config(Path("."))) == 0
+    assert calls == [("POST", "/api/favorites/sync", None)]
+    assert capsys.readouterr().out.splitlines() == [
+        "favorite links synchronized",
+        "links removed: stale_user",
+    ]
+
+
+def test_parser_accepts_explicit_full_sync_option() -> None:
+    args = ttfav.build_parser().parse_args(["--sync-all"])
+
+    assert args.sync_all is True
+
+
 def test_install_tt_tools_runs_as_direct_script(tmp_path: Path) -> None:
     legacy_fav = tmp_path / "home" / ".local" / "bin" / "fav"
     legacy_fav.parent.mkdir(parents=True)
