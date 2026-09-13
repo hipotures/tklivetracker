@@ -320,6 +320,49 @@ async def test_system_recorder_blocks_duplicate_start_without_database_row(tmp_p
 
 
 @pytest.mark.asyncio
+async def test_force_restart_does_not_bypass_running_database_process(tmp_path):
+    running = make_process_info(1, "alice", 9001, tmp_path / "alice.mp4")
+    store = FakeMetadataStore([running])
+    manager = StartTestManager(
+        store,
+        {
+            "recordings_path": str(tmp_path),
+            "detached_process_mode": True,
+            "max_live_processes": 100,
+        },
+    )
+
+    result = await manager.start_live_recording("alice", force_restart=True)
+
+    assert result.success is True
+    assert result.started_new is False
+    assert result.pid == 9001
+    assert manager.spawn_count == 0
+
+
+@pytest.mark.asyncio
+async def test_force_restart_does_not_bypass_running_system_recorder(tmp_path):
+    store = FakeMetadataStore()
+    manager = StartTestManager(
+        store,
+        {
+            "recordings_path": str(tmp_path),
+            "detached_process_mode": True,
+            "max_live_processes": 100,
+        },
+    )
+    recorder = make_recorder(4321, "alice", tmp_path / "alice.mp4", 10)
+    manager.get_system_recorder_processes = lambda: [recorder]
+
+    result = await manager.start_live_recording("alice", force_restart=True)
+
+    assert result.success is True
+    assert result.started_new is False
+    assert result.pid == 4321
+    assert manager.spawn_count == 0
+
+
+@pytest.mark.asyncio
 async def test_health_monitor_requests_stop_instead_of_hiding_running_process():
     process = make_process_info(1, "alice", 123, restart_count=3)
     store = FakeMetadataStore([process])
@@ -839,6 +882,34 @@ async def test_zero_data_exit_requests_exact_replacement():
         process,
         "recorder produced no stream data",
         "stopped_no_stream_data",
+        True,
+    )]
+
+
+@pytest.mark.asyncio
+async def test_audio_only_segment_requests_exact_replacement():
+    process = make_process_info(1, "alice", 123)
+    monitor = RecordingHealthMonitor(FakeMetadataStore([process]), {})
+    replacements = []
+    monitor.set_live_check_callback(lambda username: asyncio.sleep(0, result=True))
+
+    async def replace_callback(*args):
+        replacements.append(args)
+        return True
+
+    monitor.add_replacement_callback(replace_callback)
+    await monitor._handle_unhealthy_process(
+        HealthCheckResult(
+            process,
+            False,
+            ["[AUDIO_ONLY_STREAM] Latest FLV segment declares no video track"],
+        )
+    )
+
+    assert replacements == [(
+        process,
+        "audio-only FLV segment",
+        "stopped_audio_only",
         True,
     )]
 

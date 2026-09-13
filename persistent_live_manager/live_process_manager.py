@@ -246,36 +246,41 @@ class LiveProcessManager:
             ProcessStartResult with success status and details
         """
         try:
-            # Check if user already has an active recording
+            # A forced replacement may race with the supervisor's normal live
+            # loop after the old row is stopped. Never let force_restart bypass
+            # a recorder that is already verifiably running.
             existing_process = self.metadata_store.get_process_by_username(username)
-            if existing_process and not force_restart:
+            if existing_process:
                 if self._is_process_running(existing_process.pid):
                     user_logger = UserContextLogger(self.logger, username)
-                    user_logger.info(f"User already has a running recording (PID={existing_process.pid})")
+                    user_logger.info(
+                        "User already has a running recording "
+                        f"(PID={existing_process.pid}); replacement start skipped"
+                    )
                     return ProcessStartResult(
                         True, existing_process.id, existing_process.pid, None, started_new=False
                     )
 
-                # A verified dead PID must not force a duplicate active row.
-                self.cleanup_zero_byte_output(existing_process)
-                self.metadata_store.mark_process_stopped(existing_process.id)
+                if not force_restart:
+                    # A verified dead PID must not force a duplicate active row.
+                    self.cleanup_zero_byte_output(existing_process)
+                    self.metadata_store.mark_process_stopped(existing_process.id)
 
-            if not force_restart:
-                system_processes = [
-                    process
-                    for process in self.get_system_recorder_processes()
-                    if process.username == username
-                ]
-                if system_processes:
-                    process = min(system_processes, key=lambda item: item.create_time)
-                    user_logger = UserContextLogger(self.logger, username)
-                    user_logger.debug(
-                        f"Recorder already exists in the system (PID={process.pid}); "
-                        "not starting a duplicate"
-                    )
-                    return ProcessStartResult(
-                        True, None, process.pid, None, started_new=False
-                    )
+            system_processes = [
+                process
+                for process in self.get_system_recorder_processes()
+                if process.username == username
+            ]
+            if system_processes:
+                process = min(system_processes, key=lambda item: item.create_time)
+                user_logger = UserContextLogger(self.logger, username)
+                user_logger.debug(
+                    f"Recorder already exists in the system (PID={process.pid}); "
+                    "replacement start skipped"
+                )
+                return ProcessStartResult(
+                    True, None, process.pid, None, started_new=False
+                )
 
             if not ignore_no_stream_data_cooldown:
                 cooldown_remaining = self._no_stream_data_cooldown_remaining(

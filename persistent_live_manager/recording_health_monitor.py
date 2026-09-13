@@ -898,6 +898,8 @@ class RecordingHealthMonitor:
             )
         elif any("File size decreased significantly" in issue for issue in health_result.issues):
             exact_failure = ("recording file size decreased", 'stopped_file_truncated')
+        elif any("[AUDIO_ONLY_STREAM]" in issue for issue in health_result.issues):
+            exact_failure = ("audio-only FLV segment", 'stopped_audio_only')
 
         if exact_failure is not None:
             reason, final_status = exact_failure
