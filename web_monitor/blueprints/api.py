@@ -21,6 +21,7 @@ from modules.db_user import (
 from modules.favorite_links import format_sync_report, sync_favorite_links
 from modules.user_data_transformer import user_data_transformer
 from modules.supervisor_status import SupervisorStatusManager
+from modules.selenium_monitor_status import SeleniumMonitorStatusManager
 
 # Create blueprint
 api_bp = Blueprint('api', __name__, url_prefix='/api')
@@ -903,6 +904,29 @@ def get_supervisor_status():
             'success': False,
             'status': 'error',
             'message': 'Failed to get supervisor status'
+        }), 500
+
+
+@api_bp.route('/monitor-status', methods=['GET'])
+def get_monitor_status():
+    """Get Selenium live-monitor status for the header indicator."""
+    try:
+        config = current_app.config.get('CONFIG', {})
+        status = SeleniumMonitorStatusManager.get_monitor_status(config)
+
+        return jsonify({
+            'success': True,
+            'status': status['status'],
+            'message': status['message'],
+            'last_seen_seconds': status.get('last_seen_seconds')
+        })
+
+    except Exception as e:
+        current_app.logger.error(f"Live monitor status error: {e}")
+        return jsonify({
+            'success': False,
+            'status': 'error',
+            'message': 'Failed to get live monitor status'
         }), 500
 
 @api_bp.route('/config', methods=['GET'])

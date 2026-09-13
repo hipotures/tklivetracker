@@ -175,12 +175,29 @@ class SupervisorStatusManager:
                 last_heartbeat = datetime.strptime(row['last_heartbeat'], '%Y-%m-%d %H:%M:%S')
             else:
                 last_heartbeat = row['last_heartbeat']
-            minutes_ago = int((now - last_heartbeat).total_seconds() / 60)
+            heartbeat_age_seconds = max(
+                0.0, (now - last_heartbeat).total_seconds()
+            )
+            minutes_ago = int(heartbeat_age_seconds / 60)
 
-            # Determine status based on heartbeat age
-            if minutes_ago < 3:
+            configured_interval = config.get('intervals', {}).get(
+                'supervisor_heartbeat_interval', 30
+            )
+            try:
+                heartbeat_interval = max(1.0, float(configured_interval))
+            except (TypeError, ValueError):
+                heartbeat_interval = 30
+            warning_after = max(heartbeat_interval * 2, 60)
+            disconnected_after = max(heartbeat_interval * 3, 90)
+
+            # A graceful shutdown records "stopped" with a fresh heartbeat.
+            # Respect that explicit state before evaluating heartbeat age.
+            stored_status = row['status']
+            if stored_status != 'active':
+                status = 'disconnected'
+            elif heartbeat_age_seconds < warning_after:
                 status = 'connected'
-            elif minutes_ago < 5:
+            elif heartbeat_age_seconds < disconnected_after:
                 status = 'warning'
             else:
                 status = 'disconnected'
@@ -210,7 +227,13 @@ class SupervisorStatusManager:
                 'config_hash': row['config_hash'],
                 'stats': stats,
                 'minutes_ago': minutes_ago,
-                'message': f'Last seen {minutes_ago} minutes ago' if minutes_ago > 0 else 'Active now'
+                'message': (
+                    f'Supervisor reported {stored_status}'
+                    if stored_status != 'active'
+                    else f'Last seen {minutes_ago} minutes ago'
+                    if minutes_ago > 0
+                    else 'Active now'
+                )
             }
 
         except Exception as e:

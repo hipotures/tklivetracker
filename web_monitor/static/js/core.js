@@ -78,8 +78,8 @@ class TikTokRecorderApp {
         this.startAutoRefresh();
         this.setupServerSentEvents();
 
-        // Initial supervisor status check
-        setTimeout(() => this.checkSupervisorStatus(), 1000);
+        // Initial process status check
+        setTimeout(() => this.refreshProcessStatuses(), 1000);
 
         window.addEventListener('beforeunload', () => {
             this.stopAutoRefresh();

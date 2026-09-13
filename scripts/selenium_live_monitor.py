@@ -74,6 +74,7 @@ class Constants:
     DEFAULT_HANG_WATCHDOG_TIMEOUT = 180
     DEFAULT_HANG_WATCHDOG_GRACE = 15
     HANG_WATCHDOG_POLL_INTERVAL = 5
+    STATUS_HEARTBEAT_INTERVAL = 5
     CAPTCHA_PAUSE_SECONDS = 300  # 5 minutes
     PAGE_LOAD_TIMEOUT = 3
     DEFAULT_WAIT = 2
@@ -1278,6 +1279,18 @@ class SeleniumLiveDB:
                 )
             ''')
 
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS selenium_monitor_status (
+                    id INTEGER PRIMARY KEY CHECK (id = 1),
+                    pid INTEGER NOT NULL,
+                    started_at DATETIME NOT NULL,
+                    last_heartbeat DATETIME NOT NULL,
+                    last_progress DATETIME NOT NULL,
+                    status TEXT NOT NULL,
+                    stage TEXT NOT NULL
+                )
+            ''')
+
             # Create indexes for performance
             cursor.execute('CREATE INDEX IF NOT EXISTS idx_started_at ON selenium_live(started_at)')
             cursor.execute('CREATE INDEX IF NOT EXISTS idx_ended_at ON selenium_live(ended_at)')
@@ -1286,6 +1299,43 @@ class SeleniumLiveDB:
 
             conn.commit()
             logging.info(f"✅ SQLite database initialized: {self.db_path}")
+
+    def update_monitor_status(
+        self,
+        *,
+        pid: int,
+        started_at: datetime,
+        last_progress: datetime,
+        status: str,
+        stage: str,
+    ) -> None:
+        """Persist the current monitor-process heartbeat in a singleton row."""
+        heartbeat = datetime.now().replace(microsecond=0)
+        with self.get_connection() as conn:
+            conn.execute(
+                '''
+                INSERT INTO selenium_monitor_status (
+                    id, pid, started_at, last_heartbeat, last_progress,
+                    status, stage
+                ) VALUES (1, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(id) DO UPDATE SET
+                    pid = excluded.pid,
+                    started_at = excluded.started_at,
+                    last_heartbeat = excluded.last_heartbeat,
+                    last_progress = excluded.last_progress,
+                    status = excluded.status,
+                    stage = excluded.stage
+                ''',
+                (
+                    pid,
+                    started_at,
+                    heartbeat,
+                    last_progress,
+                    status,
+                    stage,
+                ),
+            )
+            conn.commit()
 
     def get_last_live_users(self) -> List[str]:
         """Get users who were processed in the most recent monitoring cycle"""
@@ -1530,9 +1580,12 @@ class EnhancedLiveMonitor:
         self._progress_lock = threading.Lock()
         self._cycle_id = 0
         self._last_progress_ts = time.monotonic()
+        self._process_started_at = datetime.now().replace(microsecond=0)
+        self._last_progress_at = self._process_started_at
         self._last_progress_stage = "init"
         self._last_progress_cycle = 0
         self._hang_recovery_in_progress = False
+        self._status_heartbeat_thread = None
 
         # Setup logging AFTER loading config
         self._setup_logging()
@@ -1635,9 +1688,56 @@ class EnhancedLiveMonitor:
         """Update progress heartbeat for hang watchdog."""
         with self._progress_lock:
             self._last_progress_ts = time.monotonic()
+            self._last_progress_at = datetime.now().replace(microsecond=0)
             self._last_progress_stage = stage
             self._last_progress_cycle = self._cycle_id
             self._hang_recovery_in_progress = False
+
+    def _write_monitor_status(self, status: str, stage: Optional[str] = None) -> None:
+        """Write monitor liveness without exposing process inspection to the web app."""
+        db = getattr(self, "db", None)
+        if db is None:
+            return
+
+        with self._progress_lock:
+            last_progress = self._last_progress_at
+            current_stage = stage or self._last_progress_stage
+
+        try:
+            db.update_monitor_status(
+                pid=os.getpid(),
+                started_at=self._process_started_at,
+                last_progress=last_progress,
+                status=status,
+                stage=current_stage,
+            )
+        except Exception as error:
+            logging.debug("Failed to update live monitor heartbeat: %s", error)
+
+    def _start_status_heartbeat(self) -> None:
+        """Persist liveness independently of Selenium calls in the main thread."""
+        configured_interval = self.selenium_config.get(
+            "status_heartbeat_interval", Constants.STATUS_HEARTBEAT_INTERVAL
+        )
+        try:
+            interval = max(1.0, float(configured_interval))
+        except (TypeError, ValueError):
+            interval = Constants.STATUS_HEARTBEAT_INTERVAL
+
+        self._write_monitor_status("active")
+
+        def heartbeat_loop():
+            while not self.shutdown_event.wait(timeout=interval):
+                if not self.running or self.shutdown_requested or self.force_restart_requested:
+                    return
+                self._write_monitor_status("active")
+
+        self._status_heartbeat_thread = threading.Thread(
+            target=heartbeat_loop,
+            name="monitor-status-heartbeat",
+            daemon=True,
+        )
+        self._status_heartbeat_thread.start()
 
     def _request_driver_restart(self, reason: str) -> None:
         """Queue WebDriver restart to be executed by the main monitor loop."""
@@ -1877,6 +1977,7 @@ class EnhancedLiveMonitor:
     def _signal_handler(self, signum: int, frame) -> None:
         """Handle shutdown signals gracefully"""
         if not self.shutdown_requested:
+            self._write_monitor_status("stopping", "shutdown_requested")
             self.shutdown_requested = True
             self.shutdown_event.set()  # Wake up any waiting threads
             signal_name = "SIGINT (Ctrl+C)" if signum == signal.SIGINT else f"signal {signum}"
@@ -1904,6 +2005,8 @@ class EnhancedLiveMonitor:
 
         logging.info(f"🚀 Starting enhanced live monitor (refresh every {refresh_interval}s)")
         self._touch_progress("monitor_started")
+        if getattr(self, "db", None) is not None:
+            self._start_status_heartbeat()
 
         # Chrome profile handles session persistence
         logging.info("🔐 Using Chrome profile for session persistence")
@@ -2063,6 +2166,10 @@ class EnhancedLiveMonitor:
             except Exception:
                 # Silent shutdown - warnings are normal during browser shutdown
                 logging.info("🔒 Browser closed")
+
+        self.running = False
+        self.shutdown_event.set()
+        self._write_monitor_status("stopped", "stopped")
 
     def run_session_refresh(self) -> None:
         """Run in session refresh mode - just open browser and wait"""

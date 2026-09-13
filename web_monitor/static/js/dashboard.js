@@ -470,12 +470,15 @@ TikTokRecorderApp.prototype.startAutoRefresh = function() {
             this.loadAdminPage();
         }
 
-        // Always check supervisor status
-        this.checkSupervisorStatus();
-
         // Update "Last updated" timestamp on all pages
         this.updateLastRefreshTime();
     }, 60000); // 1 minute
+
+    // Process indicators are operational health checks and should update faster
+    // than the page data refresh cycle.
+    this.statusRefreshInterval = setInterval(() => {
+        this.refreshProcessStatuses();
+    }, 10000);
 
     // Update progress indicator every 1 second (countdown from 100% to 0%)
     this.progressInterval = setInterval(() => {
@@ -500,6 +503,10 @@ TikTokRecorderApp.prototype.stopAutoRefresh = function() {
     if (this.progressInterval) {
         clearInterval(this.progressInterval);
         this.progressInterval = null;
+    }
+    if (this.statusRefreshInterval) {
+        clearInterval(this.statusRefreshInterval);
+        this.statusRefreshInterval = null;
     }
 };
 
@@ -532,6 +539,7 @@ TikTokRecorderApp.prototype.forceMainRefresh = function() {
     this.updateRefreshProgress(100); // Reset to 100%
 
     this.refreshCurrentPage();
+    this.refreshProcessStatuses();
     this.updateLastRefreshTime();
 
     // Visual feedback
@@ -569,10 +577,6 @@ TikTokRecorderApp.prototype.setupServerSentEvents = function() {
 
         this.eventSource = new EventSource('/api/events');
 
-        this.eventSource.onopen = () => {
-            this.updateSSEStatus(true);
-        };
-
         this.eventSource.onmessage = (event) => {
             try {
                 const data = JSON.parse(event.data);
@@ -583,13 +587,11 @@ TikTokRecorderApp.prototype.setupServerSentEvents = function() {
         };
 
         this.eventSource.onerror = () => {
-            this.updateSSEStatus(false);
             // Don't try to reconnect automatically to avoid 404 spam
             console.warn('SSE connection failed - real-time updates disabled');
         };
     } catch (error) {
         console.warn('SSE not available:', error);
-        this.updateSSEStatus(false);
     }
 };
 
@@ -631,19 +633,23 @@ TikTokRecorderApp.prototype.handleServerEvent = function(data) {
     }
 };
 
-TikTokRecorderApp.prototype.updateSSEStatus = function(connected) {
-    const statusElement = document.getElementById('sse-status');
+TikTokRecorderApp.prototype.updateMonitorStatus = function(status, message) {
+    const statusElement = document.getElementById('live-monitor-status');
     if (statusElement) {
-        const dot = statusElement.querySelector('.dot');
         const accessibleText = statusElement.querySelector('.visually-hidden');
-        const statusText = connected ? 'Live updates: connected' : 'Live updates: disconnected';
-        if (connected) {
-            dot.style.backgroundColor = '#10b981'; // Green
-            statusElement.title = statusText;
+        let statusText;
+
+        statusElement.classList.remove('status-pending', 'monitor-warning', 'disconnected');
+        if (status === 'connected') {
+            statusText = `Live updates: Active (${message})`;
+        } else if (status === 'warning') {
+            statusElement.classList.add('monitor-warning');
+            statusText = `Live updates: Warning (${message})`;
         } else {
-            dot.style.backgroundColor = '#ef4444'; // Red
-            statusElement.title = statusText;
+            statusElement.classList.add('disconnected');
+            statusText = `Live updates: Disconnected (${message})`;
         }
+        statusElement.title = statusText;
         if (accessibleText) accessibleText.textContent = statusText;
     }
 };
@@ -651,18 +657,21 @@ TikTokRecorderApp.prototype.updateSSEStatus = function(connected) {
 TikTokRecorderApp.prototype.updateSupervisorStatus = function(status, message, minutesAgo) {
     const statusElement = document.getElementById('supervisor-status');
     if (statusElement) {
-        const dot = statusElement.querySelector('.dot');
         const accessibleText = statusElement.querySelector('.visually-hidden');
         let statusText;
 
+        statusElement.classList.remove(
+            'status-pending',
+            'supervisor-warning',
+            'supervisor-disconnected'
+        );
         if (status === 'connected') {
-            dot.style.backgroundColor = '#10b981'; // Green
             statusText = `Supervisor: Active (${message})`;
         } else if (status === 'warning') {
-            dot.style.backgroundColor = '#f59e0b'; // Yellow
+            statusElement.classList.add('supervisor-warning');
             statusText = `Supervisor: Warning (${message})`;
         } else {
-            dot.style.backgroundColor = '#ef4444'; // Red
+            statusElement.classList.add('supervisor-disconnected');
             statusText = `Supervisor: Disconnected (${message})`;
         }
         statusElement.title = statusText;
@@ -774,6 +783,23 @@ TikTokRecorderApp.prototype.formatPreviousLiveInfo = function(startedAt, endedAt
 };
 
 // Supervisor Status Functions
+TikTokRecorderApp.prototype.refreshProcessStatuses = function() {
+    return Promise.allSettled([
+        this.checkMonitorStatus(),
+        this.checkSupervisorStatus()
+    ]);
+};
+
+TikTokRecorderApp.prototype.checkMonitorStatus = async function() {
+    try {
+        const response = await this.apiRequest('/api/monitor-status');
+        this.updateMonitorStatus(response.status, response.message);
+    } catch (error) {
+        console.error('Failed to check live monitor status:', error);
+        this.updateMonitorStatus('error', 'Failed to check status');
+    }
+};
+
 TikTokRecorderApp.prototype.checkSupervisorStatus = async function() {
     try {
         const response = await this.apiRequest('/api/supervisor-status');

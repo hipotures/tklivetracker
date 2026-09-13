@@ -46,6 +46,7 @@ persistent_live_system:
 selenium:
   database_path: ./selenium_live.db
   refresh_interval: 60
+  status_heartbeat_interval: 5
   chrome_profile_path: ./private/selenium_chrome_profile
   cache_dir: ./tmp/chrome-cache
   screenshots_enabled: false

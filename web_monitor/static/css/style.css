@@ -208,8 +208,9 @@ strong { font-weight: 600; }
 .header-refresh-icon:disabled, .refresh-icon:disabled { opacity: .5; cursor: not-allowed; }
 .status-indicators { gap: 6px; }
 .status-indicator .dot, .supervisor-status-indicator .dot { width: 8px; height: 8px; flex: 0 0 8px; border-radius: 999px; background: var(--success); }
+.status-indicator.status-pending .dot { background: var(--text-muted); }
 .status-indicator.disconnected .dot, .status-indicator.supervisor-disconnected .dot { background: var(--danger); }
-.status-indicator.supervisor-warning .dot { background: var(--warning); }
+.status-indicator.monitor-warning .dot, .status-indicator.supervisor-warning .dot { background: var(--warning); }
 @keyframes spin { to { transform: rotate(360deg); } }
 
 /* Operational banners */
